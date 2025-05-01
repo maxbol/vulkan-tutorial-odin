@@ -1,38 +1,26 @@
-package renderer_vulkan
+package main
 
-import l "core:math/linalg"
-
-vec2 :: distinct l.Vector2f32
-vec3 :: distinct l.Vector3f32
-vec4 :: distinct l.Vector4f32
-
-mat2 :: distinct l.Matrix2x2f32
-mat3 :: distinct l.Matrix3x3f32
-mat4 :: distinct l.Matrix4x4f32
+import um "unitmath"
 
 MAX_LIGHTS :: 10
 
-PointLight :: struct {
-	position: vec4,
-	color:    vec4,
-}
-
 GlobalUbo :: struct {
-	projection:          mat4,
-	view:                mat4,
-	inverse_view:        mat4,
-	ambient_light_color: vec4,
+	projection:          um.Mat4,
+	view:                um.Mat4,
+	inverse_view:        um.Mat4,
+	ambient_light_color: um.Vec4,
 	point_lights:        [MAX_LIGHTS]PointLight,
 	num_lights:          int,
 }
 
 global_ubo :: proc(
-	projection: mat4 = mat4{},
-	view := mat4{},
-	inverse_view := mat4{},
-	ambient_light_color: vec4 = vec4{},
+	projection: um.Mat4 = um.Mat4{},
+	view := um.Mat4{},
+	inverse_view := um.Mat4{},
+	ambient_light_color: um.Vec4 = um.Vec4{},
 	point_lights: []PointLight = {},
 ) -> GlobalUbo {
+  using um
 	ubo := GlobalUbo{}
 
 	assert(
@@ -40,7 +28,7 @@ global_ubo :: proc(
 		"Number of point_lights must be less than or equal to MAX_LIGHTS",
 	)
 
-	if projection == (mat4{}) {
+	if projection == (Mat4{}) {
 		for i in 0 ..< 16 {
 			ubo.projection[i] = 1
 		}
@@ -48,7 +36,7 @@ global_ubo :: proc(
 		ubo.projection = projection
 	}
 
-	if view == (mat4{}) {
+	if view == (Mat4{}) {
 		for i in 0 ..< 16 {
 			ubo.view[i] = 1
 		}
@@ -56,7 +44,7 @@ global_ubo :: proc(
 		ubo.view = projection
 	}
 
-	if inverse_view == (mat4{}) {
+	if inverse_view == (Mat4{}) {
 		for i in 0 ..< 16 {
 			ubo.inverse_view[i] = 1
 		}
@@ -64,7 +52,7 @@ global_ubo :: proc(
 		ubo.inverse_view = projection
 	}
 
-	if ambient_light_color == (vec4{}) {
+	if ambient_light_color == (Vec4{}) {
 		ubo.ambient_light_color = {1, 1, 1, .02}
 	} else {
 		ubo.ambient_light_color = ambient_light_color
@@ -77,3 +65,4 @@ global_ubo :: proc(
 
 	return ubo
 }
+

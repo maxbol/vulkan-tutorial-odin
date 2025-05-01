@@ -1,49 +1,23 @@
 package main
 
-import vb "renderer/backends/vulkan"
 import d "renderer/backends/vulkan/device"
+import m "renderer/backends/vulkan/model"
 import p "renderer/backends/vulkan/pipeline"
+import um "unitmath"
 
 import "core:fmt"
 import "vendor:vulkan"
 
 SimpleRenderSystem :: struct {
-	pipeline:        ^p.Pipeline,
+	pipeline:        p.Pipeline,
 	pipeline_layout: vulkan.PipelineLayout,
 	device:          ^d.Device,
 	vk_allocator:    ^vulkan.AllocationCallbacks,
 }
 
 SimplePushConstantData :: struct {
-	model_matrix:  vb.mat4,
-	normal_matrix: vb.mat4,
-}
-
-create_simple_render_system :: proc(
-	device: ^d.Device,
-	render_pass: vulkan.RenderPass,
-	global_set_layout: vulkan.DescriptorSetLayout,
-	srs: ^SimpleRenderSystem,
-	vk_allocator: ^vulkan.AllocationCallbacks = nil,
-) -> bool {
-	srs^ = {
-		device       = device,
-		vk_allocator = vk_allocator,
-	}
-
-	if !create_pipeline_layout(srs, global_set_layout) {
-		return false
-	}
-
-	if !create_pipeline(srs, render_pass) {
-		return false
-	}
-
-	return true
-}
-
-destroy_simple_render_system :: proc(srs: ^SimpleRenderSystem) {
-	vulkan.DestroyPipelineLayout(srs.device.logical_device, srs.pipeline_layout, srs.vk_allocator)
+	model_matrix:  um.Mat4,
+	normal_matrix: um.Mat4,
 }
 
 @(private = "file")
@@ -68,7 +42,7 @@ create_pipeline_layout :: proc(
 	}
 
 	if vulkan.CreatePipelineLayout(
-		   srs.device.logical_device,
+		   srs.device.vk_device,
 		   &pipeline_layout_info,
 		   srs.vk_allocator,
 		   &srs.pipeline_layout,
@@ -82,22 +56,24 @@ create_pipeline_layout :: proc(
 }
 
 @(private = "file")
-create_pipeline :: proc(srs: ^SimpleRenderSystem, render_pass: vulkan.RenderPass) -> bool {
-	assert(srs.pipeline_layout != 0, "Cannot create pipeline before pipeline layout")
+create_pipeline :: proc(using srs: ^SimpleRenderSystem, render_pass: vulkan.RenderPass) -> bool {
+	assert(pipeline_layout != 0, "Cannot create pipeline before pipeline layout")
 
 	pipeline_config: p.PipelineConfigInfo
 	p.default_pipeline_config_info(&pipeline_config)
 
 	pipeline_config.render_pass = render_pass
-	pipeline_config.pipeline_layout = srs.pipeline_layout
+	pipeline_config.pipeline_layout = pipeline_layout
+
+	fmt.println("pipeline_config", pipeline_config)
 
 	err := p.create_pipeline(
-		srs.device,
+		device,
 		"./shaders/simple_shader.vert.spv",
 		"./shaders/simple_shader.frag.spv",
 		pipeline_config,
-		srs.pipeline,
-		srs.vk_allocator,
+		&pipeline,
+		vk_allocator,
 	)
 
 	if err != nil {
@@ -105,4 +81,71 @@ create_pipeline :: proc(srs: ^SimpleRenderSystem, render_pass: vulkan.RenderPass
 		return false
 	}
 	return true
+}
+
+srs_create :: proc(
+	device: ^d.Device,
+	render_pass: vulkan.RenderPass,
+	global_set_layout: vulkan.DescriptorSetLayout,
+	srs: ^SimpleRenderSystem,
+	vk_allocator: ^vulkan.AllocationCallbacks = nil,
+) -> bool {
+	srs^ = {
+		device       = device,
+		vk_allocator = vk_allocator,
+	}
+
+	if !create_pipeline_layout(srs, global_set_layout) {
+		return false
+	}
+
+	if !create_pipeline(srs, render_pass) {
+		return false
+	}
+
+	return true
+}
+
+srs_destroy :: proc(using srs: ^SimpleRenderSystem) {
+	p.destroy_pipeline(&pipeline)
+	pipeline = p.Pipeline{}
+	vulkan.DestroyPipelineLayout(device.vk_device, pipeline_layout, vk_allocator)
+}
+
+srs_render_game_objects :: proc(using srs: ^SimpleRenderSystem, frame_info: ^FrameInfo) {
+	p.bind(&pipeline, frame_info.command_buffer)
+
+	vulkan.CmdBindDescriptorSets(
+		frame_info.command_buffer,
+		.GRAPHICS,
+		pipeline_layout,
+		0,
+		1,
+		&frame_info.global_descriptor_set,
+		0,
+		nil,
+	)
+
+	for key, obj in frame_info.game_objects {
+		if !obj.model.present {
+			continue
+		}
+		push: SimplePushConstantData = {
+			model_matrix = obj.transform.mat4,
+		}
+
+		vulkan.CmdPushConstants(
+			frame_info.command_buffer,
+			pipeline_layout,
+			{.VERTEX, .FRAGMENT},
+			0,
+			size_of(SimplePushConstantData),
+			&push,
+		)
+
+		m.bind(obj.model.value, frame_info.command_buffer)
+		m.draw(obj.model.value, frame_info.command_buffer)
+	}
+
+
 }

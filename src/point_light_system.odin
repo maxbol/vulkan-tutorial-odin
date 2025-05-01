@@ -1,26 +1,40 @@
 package main
 
 import "core:fmt"
+import "core:math"
+import "core:math/linalg"
+import "core:slice"
 import "vendor:vulkan"
 
-import vr "renderer/backends/vulkan"
+import c "renderer/backends/vulkan/camera"
 import d "renderer/backends/vulkan/device"
 import p "renderer/backends/vulkan/pipeline"
+import um "unitmath"
+
+PointLight :: struct {
+	position: um.Vec4,
+	color:    um.Vec4,
+}
 
 PointLightSystem :: struct {
 	device:          ^d.Device,
-	pipeline:        ^p.Pipeline,
+	pipeline:        p.Pipeline,
 	pipeline_layout: vulkan.PipelineLayout,
 	vk_allocator:    ^vulkan.AllocationCallbacks,
 }
 
 PointLightPushConstants :: struct {
-	position: vr.vec4,
-	color:    vr.vec4,
+	position: um.Vec4,
+	color:    um.Vec4,
 	radius:   f32,
 }
 
-create_point_light_system :: proc(
+PointLightSortedGameObject :: struct {
+	order: f32,
+	id:    GameObjectId,
+}
+
+pls_create :: proc(
 	device: ^d.Device,
 	render_pass: vulkan.RenderPass,
 	global_set_layout: vulkan.DescriptorSetLayout,
@@ -43,13 +57,15 @@ create_point_light_system :: proc(
 	return true
 }
 
-destroy_point_light_system :: proc(pls: ^PointLightSystem) {
-	vulkan.DestroyPipelineLayout(pls.device.logical_device, pls.pipeline_layout, pls.vk_allocator)
+pls_destroy :: proc(using pls: ^PointLightSystem) {
+	p.destroy_pipeline(&pipeline)
+	pipeline = {}
+	vulkan.DestroyPipelineLayout(device.vk_device, pipeline_layout, vk_allocator)
 }
 
 @(private = "file")
 create_pipeline_layout :: proc(
-	pls: ^PointLightSystem,
+	using pls: ^PointLightSystem,
 	global_set_layout: vulkan.DescriptorSetLayout,
 ) -> bool {
 	push_constant_range := vulkan.PushConstantRange {
@@ -69,10 +85,10 @@ create_pipeline_layout :: proc(
 	}
 
 	if vulkan.CreatePipelineLayout(
-		   pls.device.logical_device,
+		   device.vk_device,
 		   &pipeline_layout_info,
-		   pls.vk_allocator,
-		   &pls.pipeline_layout,
+		   vk_allocator,
+		   &pipeline_layout,
 	   ) !=
 	   .SUCCESS {
 		fmt.println("Failed to create pipeline layout")
@@ -83,8 +99,8 @@ create_pipeline_layout :: proc(
 }
 
 @(private = "file")
-create_pipeline :: proc(pls: ^PointLightSystem, render_pass: vulkan.RenderPass) -> bool {
-	assert(pls.pipeline_layout != 0, "Cannot create pipeline before pipeline layout")
+create_pipeline :: proc(using pls: ^PointLightSystem, render_pass: vulkan.RenderPass) -> bool {
+	assert(pipeline_layout != 0, "Cannot create pipeline before pipeline layout")
 
 	pipeline_config: p.PipelineConfigInfo
 	p.default_pipeline_config_info(&pipeline_config)
@@ -93,14 +109,14 @@ create_pipeline :: proc(pls: ^PointLightSystem, render_pass: vulkan.RenderPass) 
 	p.clear_attribute_descriptions(&pipeline_config)
 
 	pipeline_config.render_pass = render_pass
-	pipeline_config.pipeline_layout = pls.pipeline_layout
+	pipeline_config.pipeline_layout = pipeline_layout
 
 	err := p.create_pipeline(
-		pls.device,
+		device,
 		"./shaders/point_light.vert.spv",
 		"./shaders/point_light.frag.spv",
 		pipeline_config,
-		pls.pipeline,
+		&pipeline,
 	)
 
 	if err != nil {
@@ -109,4 +125,89 @@ create_pipeline :: proc(pls: ^PointLightSystem, render_pass: vulkan.RenderPass) 
 	}
 
 	return true
+}
+
+pls_update :: proc(frame_info: ^FrameInfo, ubo: ^GlobalUbo) {
+	using um, linalg
+	rotate_light := MAT4_ONES * matrix4_rotate_f32(0.5 * frame_info.frame_time, {0., -1., 0.})
+	light_index: int = 0
+
+	for id, &obj in frame_info.game_objects {
+		if !obj.point_light.present {
+			continue
+		}
+
+		assert(light_index < MAX_LIGHTS, "Point lights exceed maximum specified")
+
+		obj.transform.translation = (rotate_light * vec4(obj.transform.translation, 1)).xyz
+
+		ubo.point_lights[light_index].position = vec4(obj.transform.translation, 1)
+		ubo.point_lights[light_index].color = vec4(
+			obj.color,
+			obj.point_light.value.light_intensity,
+		)
+
+		light_index += 1
+	}
+
+	ubo.num_lights = light_index
+}
+
+pls_render :: proc(using pls: ^PointLightSystem, frame_info: ^FrameInfo) {
+	using linalg
+	sorted: [dynamic]PointLightSortedGameObject = make(
+		[dynamic]PointLightSortedGameObject,
+		0,
+		len(frame_info.game_objects),
+	)
+	for id, obj in frame_info.game_objects {
+		if obj.point_light.present == false {
+			continue
+		}
+		offset := c.camera_get_position(frame_info.camera) - obj.transform.translation
+		dist_squared := dot(offset, offset)
+		append(&sorted, PointLightSortedGameObject{id = id, order = dist_squared})
+	}
+
+	slice.sort_by(
+		sorted[:],
+		proc(i: PointLightSortedGameObject, j: PointLightSortedGameObject) -> bool {
+			return i.order > j.order
+		},
+	)
+
+	p.bind(&pipeline, frame_info.command_buffer)
+
+	vulkan.CmdBindDescriptorSets(
+		frame_info.command_buffer,
+		.GRAPHICS,
+		pipeline_layout,
+		0,
+		1,
+		&frame_info.global_descriptor_set,
+		0,
+		nil,
+	)
+
+	for sorted_go in sorted {
+		using um
+		obj := frame_info.game_objects[sorted_go.id]
+
+		push := PointLightPushConstants {
+			position = vec4(obj.transform.translation, 1),
+			color    = vec4(obj.color, obj.point_light.value.light_intensity),
+			radius   = obj.transform.scale.x,
+		}
+
+		vulkan.CmdPushConstants(
+			frame_info.command_buffer,
+			pipeline_layout,
+			{.VERTEX, .FRAGMENT},
+			0,
+			size_of(PointLightPushConstants),
+			&push,
+		)
+
+		vulkan.CmdDraw(frame_info.command_buffer, 6, 1, 0, 0)
+	}
 }

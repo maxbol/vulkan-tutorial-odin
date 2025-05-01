@@ -71,7 +71,7 @@ descriptor_set_layout_create :: proc(
 	}
 
 	if vulkan.CreateDescriptorSetLayout(
-		   device.logical_device,
+		   device.vk_device,
 		   &descriptor_set_layout_info,
 		   vk_allocator,
 		   &dsl.vk_descriptor_set_layout,
@@ -84,12 +84,8 @@ descriptor_set_layout_create :: proc(
 	return true
 }
 
-descriptor_set_layout_destroy :: proc(dsl: ^DescriptorSetLayout) {
-	vulkan.DestroyDescriptorSetLayout(
-		dsl.device.logical_device,
-		dsl.vk_descriptor_set_layout,
-		dsl.vk_allocator,
-	)
+descriptor_set_layout_destroy :: proc(using dsl: ^DescriptorSetLayout) {
+	vulkan.DestroyDescriptorSetLayout(device.vk_device, vk_descriptor_set_layout, vk_allocator)
 }
 
 descriptor_pool_create :: proc(
@@ -114,7 +110,7 @@ descriptor_pool_create :: proc(
 	}
 
 	if vulkan.CreateDescriptorPool(
-		   device.logical_device,
+		   device.vk_device,
 		   &descriptor_pool_info,
 		   vk_allocator,
 		   &dp.vk_descriptor_pool,
@@ -127,24 +123,23 @@ descriptor_pool_create :: proc(
 	return true
 }
 
-descriptor_pool_destroy :: proc(dp: ^DescriptorPool) {
-	vulkan.DestroyDescriptorPool(dp.device.logical_device, dp.vk_descriptor_pool, dp.vk_allocator)
+descriptor_pool_destroy :: proc(using dp: ^DescriptorPool) {
+	vulkan.DestroyDescriptorPool(device.vk_device, vk_descriptor_pool, vk_allocator)
 }
 
 descriptor_pool_allocate_descriptor :: proc(
-	dp: ^DescriptorPool,
+	using dp: ^DescriptorPool,
 	descriptor_set_layout: ^vulkan.DescriptorSetLayout,
 	descriptor: ^vulkan.DescriptorSet,
 ) -> bool {
 	alloc_info := vulkan.DescriptorSetAllocateInfo {
 		sType              = .DESCRIPTOR_SET_ALLOCATE_INFO,
-		descriptorPool     = dp.vk_descriptor_pool,
+		descriptorPool     = vk_descriptor_pool,
 		pSetLayouts        = descriptor_set_layout,
 		descriptorSetCount = 1,
 	}
 
-	if vulkan.AllocateDescriptorSets(dp.device.logical_device, &alloc_info, descriptor) !=
-	   .SUCCESS {
+	if vulkan.AllocateDescriptorSets(device.vk_device, &alloc_info, descriptor) != .SUCCESS {
 		return false
 	}
 
@@ -152,19 +147,19 @@ descriptor_pool_allocate_descriptor :: proc(
 }
 
 descriptor_pool_free_descriptors :: proc(
-	dp: ^DescriptorPool,
+	using dp: ^DescriptorPool,
 	descriptors: []vulkan.DescriptorSet,
 ) {
 	vulkan.FreeDescriptorSets(
-		dp.device.logical_device,
-		dp.vk_descriptor_pool,
+		device.vk_device,
+		vk_descriptor_pool,
 		u32(len(descriptors)),
 		&descriptors[0],
 	)
 }
 
-descriptor_pool_reset_pool :: proc(dp: ^DescriptorPool) {
-	vulkan.ResetDescriptorPool(dp.device.logical_device, dp.vk_descriptor_pool, {})
+descriptor_pool_reset_pool :: proc(using dp: ^DescriptorPool) {
+	vulkan.ResetDescriptorPool(device.vk_device, vk_descriptor_pool, {})
 }
 
 descriptor_writer_create :: proc(
@@ -179,14 +174,14 @@ descriptor_writer_create :: proc(
 }
 
 descriptor_writer_write_buffer :: proc(
-	dw: ^DescriptorWriter,
+	using dw: ^DescriptorWriter,
 	binding: u32,
 	buffer_info: ^vulkan.DescriptorBufferInfo,
 ) {
-	_, bound := dw.set_layout.bindings[binding]
+	_, bound := set_layout.bindings[binding]
 	assert(bound, "Layout does not contain specified binding")
 
-	binding_description := dw.set_layout.bindings[binding]
+	binding_description := set_layout.bindings[binding]
 
 	assert(
 		binding_description.descriptorCount == 1,
@@ -201,18 +196,18 @@ descriptor_writer_write_buffer :: proc(
 		descriptorCount = 1,
 	}
 
-	append(&dw.writes, write)
+	append(&writes, write)
 }
 
 descriptor_writer_write_image :: proc(
-	dw: ^DescriptorWriter,
+	using dw: ^DescriptorWriter,
 	binding: u32,
 	image_info: ^vulkan.DescriptorImageInfo,
 ) {
-	_, bound := dw.set_layout.bindings[binding]
+	_, bound := set_layout.bindings[binding]
 	assert(bound, "Layout does not contain specified binding")
 
-	binding_description := dw.set_layout.bindings[binding]
+	binding_description := set_layout.bindings[binding]
 
 	assert(
 		binding_description.descriptorCount == 1,
@@ -227,15 +222,11 @@ descriptor_writer_write_image :: proc(
 		descriptorCount = 1,
 	}
 
-	append(&dw.writes, write)
+	append(&writes, write)
 }
 
-descriptor_writer_end :: proc(dw: ^DescriptorWriter, set: ^vulkan.DescriptorSet) -> bool {
-	success := descriptor_pool_allocate_descriptor(
-		dw.pool,
-		&dw.set_layout.vk_descriptor_set_layout,
-		set,
-	)
+descriptor_writer_end :: proc(using dw: ^DescriptorWriter, set: ^vulkan.DescriptorSet) -> bool {
+	success := descriptor_pool_allocate_descriptor(pool, &set_layout.vk_descriptor_set_layout, set)
 	if !success {
 		return false
 	}
@@ -246,15 +237,9 @@ descriptor_writer_end :: proc(dw: ^DescriptorWriter, set: ^vulkan.DescriptorSet)
 }
 
 @(private)
-overwrite :: proc(dw: ^DescriptorWriter, set: vulkan.DescriptorSet) {
-	for &write in dw.writes {
+overwrite :: proc(using dw: ^DescriptorWriter, set: vulkan.DescriptorSet) {
+	for &write in writes {
 		write.dstSet = set
 	}
-	vulkan.UpdateDescriptorSets(
-		dw.pool.device.logical_device,
-		u32(len(dw.writes)),
-		&dw.writes[0],
-		0,
-		nil,
-	)
+	vulkan.UpdateDescriptorSets(pool.device.vk_device, u32(len(writes)), &writes[0], 0, nil)
 }

@@ -17,6 +17,7 @@ Window :: struct {
 CreateWindowError :: enum {
 	None,
 	GLFWInitFailed,
+	GLFWCreateWindowFailed,
 }
 
 CreateWindowSurfaceError :: enum {
@@ -36,6 +37,11 @@ create_window :: proc(w: i32, h: i32, name: string) -> (CreateWindowError, Windo
 
 	handle := glfw.CreateWindow(w, h, strings.clone_to_cstring(name), nil, nil)
 
+	if handle == nil {
+		return .GLFWCreateWindowFailed, Window{}
+	}
+
+
 	window := Window {
 		height      = h,
 		width       = w,
@@ -50,7 +56,7 @@ create_window :: proc(w: i32, h: i32, name: string) -> (CreateWindowError, Windo
 }
 
 create_window_surface :: proc(
-	window: ^Window,
+	using window: ^Window,
 	instance: vulkan.Instance,
 	vk_allocator: ^vulkan.AllocationCallbacks = nil,
 ) -> (
@@ -58,7 +64,7 @@ create_window_surface :: proc(
 	vulkan.SurfaceKHR,
 ) {
 	surface: vulkan.SurfaceKHR
-	result := glfw.CreateWindowSurface(instance, window.handle, vk_allocator, &surface)
+	result := glfw.CreateWindowSurface(instance, handle, vk_allocator, &surface)
 
 	if result != .SUCCESS {
 		return .GLFWCreateWindowSurfaceFailed, vulkan.SurfaceKHR{}
@@ -67,8 +73,8 @@ create_window_surface :: proc(
 	return .None, surface
 }
 
-destroy_window :: proc(window: ^Window) {
-	glfw.DestroyWindow(window.handle)
+destroy_window :: proc(using window: ^Window) {
+	glfw.DestroyWindow(handle)
 	glfw.Terminate()
 }
 
@@ -76,25 +82,27 @@ destroy_window :: proc(window: ^Window) {
 framebuffer_resize_callback :: proc "c" (handle: glfw.WindowHandle, width: i32, height: i32) {
 	context = runtime.default_context()
 	window := cast(^Window)glfw.GetWindowUserPointer(handle)
+	window.framebuffer_resized = true
 	window.width = width
 	window.height = height
 }
-get_extent :: proc(window: ^Window) -> vulkan.Extent2D {
-	return {u32(window.width), u32(window.height)}
+
+get_extent :: proc(using window: ^Window) -> vulkan.Extent2D {
+	return {u32(width), u32(height)}
 }
 
-get_glfw_window :: proc(window: ^Window) -> glfw.WindowHandle {
-	return window.handle
+get_glfw_window :: proc(using window: ^Window) -> glfw.WindowHandle {
+	return handle
 }
 
-reset_window_resize_flag :: proc(window: ^Window) {
-	window.framebuffer_resized = false
+reset_window_resize_flag :: proc(using window: ^Window) {
+	framebuffer_resized = false
 }
 
-should_close :: proc(window: ^Window) -> bool {
-	return cast(bool)glfw.WindowShouldClose(window.handle)
+should_close :: proc(using window: ^Window) -> bool {
+	return cast(bool)glfw.WindowShouldClose(handle)
 }
 
-was_window_resized :: proc(window: ^Window) -> bool {
-	return window.framebuffer_resized
+was_window_resized :: proc(using window: ^Window) -> bool {
+	return framebuffer_resized
 }

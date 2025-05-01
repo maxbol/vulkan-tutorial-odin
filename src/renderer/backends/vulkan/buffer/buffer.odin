@@ -1,6 +1,7 @@
 package renderer_vulkan_buffer
 
 import d "../device"
+import "core:fmt"
 import "core:mem"
 import "vendor:vulkan"
 
@@ -52,87 +53,76 @@ create_buffer :: proc(
 }
 
 descriptor_info :: proc(
-	buffer: ^Buffer,
+	using buffer: ^Buffer,
 	size: vulkan.DeviceSize = vulkan.DeviceSize(vulkan.WHOLE_SIZE),
 	offset: vulkan.DeviceSize = 0,
 ) -> vulkan.DescriptorBufferInfo {
-	return vulkan.DescriptorBufferInfo{buffer = buffer.vk_buffer, offset = offset, range = size}
+	return vulkan.DescriptorBufferInfo{buffer = vk_buffer, offset = offset, range = size}
 }
 
-descriptor_info_for_index :: proc(buffer: ^Buffer, index: int) -> vulkan.DescriptorBufferInfo {
-	return descriptor_info(
-		buffer,
-		buffer.alignment_size,
-		vulkan.DeviceSize(index) * buffer.alignment_size,
-	)
+descriptor_info_for_index :: proc(
+	using buffer: ^Buffer,
+	index: int,
+) -> vulkan.DescriptorBufferInfo {
+	return descriptor_info(buffer, alignment_size, vulkan.DeviceSize(index) * alignment_size)
 }
 
-destroy_buffer :: proc(buffer: ^Buffer) {
+destroy_buffer :: proc(using buffer: ^Buffer) {
 	unmap_buffer(buffer)
-	vulkan.DestroyBuffer(buffer.device.logical_device, buffer.vk_buffer, buffer.vk_allocator)
-	vulkan.FreeMemory(buffer.device.logical_device, buffer.memory, buffer.vk_allocator)
+	vulkan.DestroyBuffer(device.vk_device, vk_buffer, vk_allocator)
+	vulkan.FreeMemory(device.vk_device, memory, vk_allocator)
 }
 
 flush :: proc(
-	buffer: ^Buffer,
+	using buffer: ^Buffer,
 	size: vulkan.DeviceSize = vulkan.DeviceSize(vulkan.WHOLE_SIZE),
 	offset: vulkan.DeviceSize = 0,
 ) -> vulkan.Result {
 	mapped_range := vulkan.MappedMemoryRange {
 		sType  = .MAPPED_MEMORY_RANGE,
-		memory = buffer.memory,
+		memory = memory,
 		offset = offset,
 		size   = size,
 	}
 
-	return vulkan.FlushMappedMemoryRanges(buffer.device.logical_device, 1, &mapped_range)
+	return vulkan.FlushMappedMemoryRanges(device.vk_device, 1, &mapped_range)
 }
 
-flush_index :: proc(buffer: ^Buffer, index: i32) -> vulkan.Result {
-	return flush(buffer, buffer.alignment_size, vulkan.DeviceSize(index) * buffer.alignment_size)
+flush_index :: proc(using buffer: ^Buffer, index: i32) -> vulkan.Result {
+	return flush(buffer, alignment_size, vulkan.DeviceSize(index) * alignment_size)
 }
 
 invalidate :: proc(
-	buffer: ^Buffer,
+	using buffer: ^Buffer,
 	size: vulkan.DeviceSize = vulkan.DeviceSize(vulkan.WHOLE_SIZE),
 	offset: vulkan.DeviceSize = 0,
 ) -> vulkan.Result {
 	mapped_range := vulkan.MappedMemoryRange {
 		sType  = .MAPPED_MEMORY_RANGE,
-		memory = buffer.memory,
+		memory = memory,
 		offset = offset,
 		size   = size,
 	}
 
-	return vulkan.InvalidateMappedMemoryRanges(buffer.device.logical_device, 1, &mapped_range)
+	return vulkan.InvalidateMappedMemoryRanges(device.vk_device, 1, &mapped_range)
 }
 
-invalidate_index :: proc(buffer: ^Buffer, index: i32) -> vulkan.Result {
-	return invalidate(
-		buffer,
-		buffer.alignment_size,
-		vulkan.DeviceSize(index) * buffer.alignment_size,
-	)
+invalidate_index :: proc(using buffer: ^Buffer, index: i32) -> vulkan.Result {
+	return invalidate(buffer, alignment_size, vulkan.DeviceSize(index) * alignment_size)
 }
 
 map_buffer :: proc(
-	buffer: ^Buffer,
+	using buffer: ^Buffer,
 	size: vulkan.DeviceSize = vulkan.DeviceSize(vulkan.WHOLE_SIZE),
 	offset: vulkan.DeviceSize = 0,
 ) -> vulkan.Result {
-	assert(
-		buffer.memory != 0 && buffer.vk_buffer != vulkan.Buffer{},
-		"Must call map on buffer before create",
-	)
+	assert(memory != 0 && vk_buffer != vulkan.Buffer{}, "Must call map on buffer before create")
 
-	return vulkan.MapMemory(
-		buffer.device.logical_device,
-		buffer.memory,
-		offset,
-		size,
-		{},
-		&buffer.mapped,
-	)
+	if size == vulkan.DeviceSize(vulkan.WHOLE_SIZE) {
+		return vulkan.MapMemory(device.vk_device, memory, 0, buffer_size, {}, &mapped)
+	}
+
+	return vulkan.MapMemory(device.vk_device, memory, offset, size, {}, &mapped)
 }
 
 @(private)
@@ -146,35 +136,30 @@ get_alignment :: proc(
 
 	return instance_size
 }
-unmap_buffer :: proc(buffer: ^Buffer) {
-	if buffer.mapped == nil {
+unmap_buffer :: proc(using buffer: ^Buffer) {
+	if mapped == nil {
 		return
 	}
-	vulkan.UnmapMemory(buffer.device.logical_device, buffer.memory)
-	buffer.mapped = nil
+	vulkan.UnmapMemory(device.vk_device, memory)
+	mapped = nil
 }
 
 write_to_buffer :: proc(
-	buffer: ^Buffer,
+	using buffer: ^Buffer,
 	data: rawptr,
 	size: vulkan.DeviceSize = vulkan.DeviceSize(vulkan.WHOLE_SIZE),
 	offset: vulkan.DeviceSize = 0,
 ) {
-	assert(buffer.mapped != nil, "Cannot copy to unmapped buffer")
+	assert(mapped != nil, "Cannot copy to unmapped buffer")
 
 	if size == vulkan.DeviceSize(vulkan.WHOLE_SIZE) {
-		mem.copy(buffer.mapped, data, int(buffer.buffer_size))
+		mem.copy(mapped, data, int(buffer_size))
 	} else {
-		mem_offset := mem.ptr_offset(cast(^byte)buffer.mapped, offset)
+		mem_offset := mem.ptr_offset(cast(^byte)mapped, offset)
 		mem.copy(mem_offset, data, int(size))
 	}
 }
 
-write_to_index :: proc(buffer: ^Buffer, data: rawptr, index: i32) {
-	write_to_buffer(
-		buffer,
-		data,
-		buffer.instance_size,
-		vulkan.DeviceSize(index) * buffer.alignment_size,
-	)
+write_to_index :: proc(using buffer: ^Buffer, data: rawptr, index: i32) {
+	write_to_buffer(buffer, data, instance_size, vulkan.DeviceSize(index) * alignment_size)
 }

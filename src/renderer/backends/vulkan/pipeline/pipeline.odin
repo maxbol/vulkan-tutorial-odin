@@ -8,6 +8,8 @@ import "core:os"
 import "vendor:vulkan"
 
 
+MAX_DYNAMIC_STATES :: 5
+
 PipelineConfigInfo :: struct {
 	attribute_descriptions:       [m.ATTRIBUTE_DESCRIPTIONS_MAX_COUNT]vulkan.VertexInputAttributeDescription,
 	attribute_descriptions_count: u32,
@@ -20,7 +22,8 @@ PipelineConfigInfo :: struct {
 	color_blend_attachment:       vulkan.PipelineColorBlendAttachmentState,
 	color_blend_info:             vulkan.PipelineColorBlendStateCreateInfo,
 	depth_stencil_info:           vulkan.PipelineDepthStencilStateCreateInfo,
-	dynamic_state_enables:        []vulkan.DynamicState,
+	dynamic_state_enables:        [MAX_DYNAMIC_STATES]vulkan.DynamicState,
+	dynamic_state_enables_count:  u32,
 	dynamic_state_info:           vulkan.PipelineDynamicStateCreateInfo,
 	pipeline_layout:              vulkan.PipelineLayout,
 	render_pass:                  vulkan.RenderPass,
@@ -44,8 +47,8 @@ CreatePipelineError :: enum {
 	GraphicsPipelinesCreationFailed,
 }
 
-bind :: proc(pipeline: ^Pipeline, command_buffer: vulkan.CommandBuffer) {
-	vulkan.CmdBindPipeline(command_buffer, .GRAPHICS, pipeline.graphics_pipeline)
+bind :: proc(using pipeline: ^Pipeline, command_buffer: vulkan.CommandBuffer) {
+	vulkan.CmdBindPipeline(command_buffer, .GRAPHICS, graphics_pipeline)
 }
 
 create_pipeline :: proc(
@@ -144,7 +147,7 @@ create_pipeline :: proc(
 	}
 
 	if vulkan.CreateGraphicsPipelines(
-		   device.logical_device,
+		   device.vk_device,
 		   0,
 		   1,
 		   &pipeline_info,
@@ -159,127 +162,112 @@ create_pipeline :: proc(
 	return .None
 }
 
-default_pipeline_config_info :: proc(config_info: ^PipelineConfigInfo) {
-	config_info.input_assembly_info.sType = .PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO
-	config_info.input_assembly_info.topology = .TRIANGLE_LIST
-	config_info.input_assembly_info.primitiveRestartEnable = false
+default_pipeline_config_info :: proc(using config_info: ^PipelineConfigInfo) {
+	input_assembly_info.sType = .PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO
+	input_assembly_info.topology = .TRIANGLE_LIST
+	input_assembly_info.primitiveRestartEnable = false
 
-	config_info.viewport_info.sType = .PIPELINE_VIEWPORT_STATE_CREATE_INFO
-	config_info.viewport_info.viewportCount = 1
-	config_info.viewport_info.pViewports = nil
-	config_info.viewport_info.scissorCount = 1
-	config_info.viewport_info.pScissors = nil
+	viewport_info.sType = .PIPELINE_VIEWPORT_STATE_CREATE_INFO
+	viewport_info.viewportCount = 1
+	viewport_info.pViewports = nil
+	viewport_info.scissorCount = 1
+	viewport_info.pScissors = nil
 
-	config_info.rasterization_info.sType = .PIPELINE_RASTERIZATION_STATE_CREATE_INFO
-	config_info.rasterization_info.depthClampEnable = false
-	config_info.rasterization_info.rasterizerDiscardEnable = false
-	config_info.rasterization_info.polygonMode = .FILL
-	config_info.rasterization_info.lineWidth = 1
-	config_info.rasterization_info.cullMode = {}
-	config_info.rasterization_info.frontFace = .CLOCKWISE
-	config_info.rasterization_info.depthClampEnable = false
-	config_info.rasterization_info.depthBiasConstantFactor = 0
-	config_info.rasterization_info.depthBiasClamp = 0
-	config_info.rasterization_info.depthBiasSlopeFactor = 0
+	rasterization_info.sType = .PIPELINE_RASTERIZATION_STATE_CREATE_INFO
+	rasterization_info.depthClampEnable = false
+	rasterization_info.rasterizerDiscardEnable = false
+	rasterization_info.polygonMode = .FILL
+	rasterization_info.lineWidth = 1
+	rasterization_info.cullMode = {}
+	rasterization_info.frontFace = .CLOCKWISE
+	rasterization_info.depthClampEnable = false
+	rasterization_info.depthBiasConstantFactor = 0
+	rasterization_info.depthBiasClamp = 0
+	rasterization_info.depthBiasSlopeFactor = 0
 
-	config_info.multisample_info.sType = .PIPELINE_MULTISAMPLE_STATE_CREATE_INFO
-	config_info.multisample_info.sampleShadingEnable = false
-	config_info.multisample_info.rasterizationSamples = {._1}
-	config_info.multisample_info.minSampleShading = 1
-	config_info.multisample_info.pSampleMask = nil
-	config_info.multisample_info.alphaToCoverageEnable = false
-	config_info.multisample_info.alphaToOneEnable = false
+	multisample_info.sType = .PIPELINE_MULTISAMPLE_STATE_CREATE_INFO
+	multisample_info.sampleShadingEnable = false
+	multisample_info.rasterizationSamples = {._1}
+	multisample_info.minSampleShading = 1
+	multisample_info.pSampleMask = nil
+	multisample_info.alphaToCoverageEnable = false
+	multisample_info.alphaToOneEnable = false
 
-	config_info.color_blend_attachment.colorWriteMask = {.R, .G, .B, .A}
-	config_info.color_blend_attachment.blendEnable = false
-	config_info.color_blend_attachment.srcColorBlendFactor = .ONE
-	config_info.color_blend_attachment.dstColorBlendFactor = .ZERO
-	config_info.color_blend_attachment.colorBlendOp = .ADD
-	config_info.color_blend_attachment.srcAlphaBlendFactor = .ONE
-	config_info.color_blend_attachment.dstAlphaBlendFactor = .ZERO
-	config_info.color_blend_attachment.alphaBlendOp = .ADD
+	color_blend_attachment.colorWriteMask = {.R, .G, .B, .A}
+	color_blend_attachment.blendEnable = false
+	color_blend_attachment.srcColorBlendFactor = .ONE
+	color_blend_attachment.dstColorBlendFactor = .ZERO
+	color_blend_attachment.colorBlendOp = .ADD
+	color_blend_attachment.srcAlphaBlendFactor = .ONE
+	color_blend_attachment.dstAlphaBlendFactor = .ZERO
+	color_blend_attachment.alphaBlendOp = .ADD
 
-	config_info.color_blend_info.sType = .PIPELINE_COLOR_BLEND_STATE_CREATE_INFO
-	config_info.color_blend_info.logicOpEnable = false
-	config_info.color_blend_info.logicOp = .COPY
-	config_info.color_blend_info.attachmentCount = 1
-	config_info.color_blend_info.pAttachments = &config_info.color_blend_attachment
-	config_info.color_blend_info.blendConstants = {0, 0, 0, 0}
+	color_blend_info.sType = .PIPELINE_COLOR_BLEND_STATE_CREATE_INFO
+	color_blend_info.logicOpEnable = false
+	color_blend_info.logicOp = .COPY
+	color_blend_info.attachmentCount = 1
+	color_blend_info.pAttachments = &color_blend_attachment
+	color_blend_info.blendConstants = {0, 0, 0, 0}
 
-	config_info.depth_stencil_info.sType = .PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO
-	config_info.depth_stencil_info.depthTestEnable = true
-	config_info.depth_stencil_info.depthWriteEnable = true
-	config_info.depth_stencil_info.depthCompareOp = .LESS
-	config_info.depth_stencil_info.depthBoundsTestEnable = false
-	config_info.depth_stencil_info.minDepthBounds = 0
-	config_info.depth_stencil_info.maxDepthBounds = 1
-	config_info.depth_stencil_info.stencilTestEnable = false
-	config_info.depth_stencil_info.front = {}
-	config_info.depth_stencil_info.back = {}
+	depth_stencil_info.sType = .PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO
+	depth_stencil_info.depthTestEnable = true
+	depth_stencil_info.depthWriteEnable = true
+	depth_stencil_info.depthCompareOp = .LESS
+	depth_stencil_info.depthBoundsTestEnable = false
+	depth_stencil_info.minDepthBounds = 0
+	depth_stencil_info.maxDepthBounds = 1
+	depth_stencil_info.stencilTestEnable = false
+	depth_stencil_info.front = {}
+	depth_stencil_info.back = {}
 
-	config_info.dynamic_state_enables = {.VIEWPORT, .SCISSOR}
-	config_info.dynamic_state_info.sType = .PIPELINE_DYNAMIC_STATE_CREATE_INFO
-	config_info.dynamic_state_info.pDynamicStates = &config_info.dynamic_state_enables[0]
-	config_info.dynamic_state_info.dynamicStateCount = u32(len(config_info.dynamic_state_enables))
-	config_info.dynamic_state_info.flags = {}
+	dynamic_state_enables[0] = .VIEWPORT
+	dynamic_state_enables[1] = .SCISSOR
+	dynamic_state_enables_count = 2
 
-	m.get_binding_descriptions(
-		&config_info.binding_descriptions,
-		&config_info.binding_descriptions_count,
-	)
+	dynamic_state_info.sType = .PIPELINE_DYNAMIC_STATE_CREATE_INFO
+	dynamic_state_info.pDynamicStates = &dynamic_state_enables[0]
+	dynamic_state_info.dynamicStateCount = dynamic_state_enables_count
+	dynamic_state_info.flags = {}
 
-	m.get_attribute_descriptions(
-		&config_info.attribute_descriptions,
-		&config_info.attribute_descriptions_count,
-	)
+	m.get_binding_descriptions(&binding_descriptions, &binding_descriptions_count)
+	m.get_attribute_descriptions(&attribute_descriptions, &attribute_descriptions_count)
 }
 
-destroy_pipeline :: proc(pipeline: ^Pipeline) {
-	vulkan.DestroyShaderModule(
-		pipeline.device.logical_device,
-		pipeline.vert_shader_module,
-		pipeline.vk_allocator,
-	)
-
-	vulkan.DestroyShaderModule(
-		pipeline.device.logical_device,
-		pipeline.frag_shader_module,
-		pipeline.vk_allocator,
-	)
-
-	vulkan.DestroyPipeline(
-		pipeline.device.logical_device,
-		pipeline.graphics_pipeline,
-		pipeline.vk_allocator,
-	)
+destroy_pipeline :: proc(using pipeline: ^Pipeline) {
+	vulkan.DestroyShaderModule(device.vk_device, vert_shader_module, vk_allocator)
+	vulkan.DestroyShaderModule(device.vk_device, frag_shader_module, vk_allocator)
+	vulkan.DestroyPipeline(device.vk_device, graphics_pipeline, vk_allocator)
 }
 
-clear_attribute_descriptions :: proc(config_info: ^PipelineConfigInfo) {
+clear_attribute_descriptions :: proc(using config_info: ^PipelineConfigInfo) {
 	for i in 0 ..< m.ATTRIBUTE_DESCRIPTIONS_MAX_COUNT {
-		config_info.attribute_descriptions[i] = {}
+		attribute_descriptions[i] = {}
 	}
+	attribute_descriptions_count = 0
 }
-clear_binding_descriptions :: proc(config_info: ^PipelineConfigInfo) {
+
+clear_binding_descriptions :: proc(using config_info: ^PipelineConfigInfo) {
 	for i in 0 ..< m.BINDING_DESCRIPTIONS_MAX_COUNT {
-		config_info.binding_descriptions[i] = {}
+		binding_descriptions[i] = {}
 	}
+	binding_descriptions_count = 0
 }
 
 
-enable_alpha_blending :: proc(config_info: ^PipelineConfigInfo) {
-	config_info.color_blend_attachment.blendEnable = true
-	config_info.color_blend_attachment.colorWriteMask = {.R, .G, .B, .A}
-	config_info.color_blend_attachment.srcColorBlendFactor = .SRC_ALPHA
-	config_info.color_blend_attachment.dstColorBlendFactor = .ONE_MINUS_SRC_ALPHA
-	config_info.color_blend_attachment.colorBlendOp = .ADD
-	config_info.color_blend_attachment.srcAlphaBlendFactor = .ONE
-	config_info.color_blend_attachment.dstAlphaBlendFactor = .ZERO
-	config_info.color_blend_attachment.alphaBlendOp = .ADD
+enable_alpha_blending :: proc(using config_info: ^PipelineConfigInfo) {
+	color_blend_attachment.blendEnable = true
+	color_blend_attachment.colorWriteMask = {.R, .G, .B, .A}
+	color_blend_attachment.srcColorBlendFactor = .SRC_ALPHA
+	color_blend_attachment.dstColorBlendFactor = .ONE_MINUS_SRC_ALPHA
+	color_blend_attachment.colorBlendOp = .ADD
+	color_blend_attachment.srcAlphaBlendFactor = .ONE
+	color_blend_attachment.dstAlphaBlendFactor = .ZERO
+	color_blend_attachment.alphaBlendOp = .ADD
 }
 
 @(private)
 create_shader_module :: proc(
-	pipeline: ^Pipeline,
+	using pipeline: ^Pipeline,
 	code: []u8,
 	shader_module: ^vulkan.ShaderModule,
 ) -> bool {
@@ -290,9 +278,9 @@ create_shader_module :: proc(
 	}
 
 	result := vulkan.CreateShaderModule(
-		pipeline.device.logical_device,
+		device.vk_device,
 		&create_info,
-		pipeline.vk_allocator,
+		vk_allocator,
 		shader_module,
 	)
 
@@ -303,7 +291,9 @@ create_shader_module :: proc(
 
 	return true
 }
+
 read_bytecode_file :: proc(filepath: string) -> (bool, []u8) {
+	fmt.println("Reading shader bytecode from", filepath)
 	data, err := os.read_entire_file_from_filename_or_err(filepath)
 	if err != nil {
 		fmt.println("Error reading bytecode from file:", err)

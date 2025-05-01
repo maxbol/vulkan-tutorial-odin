@@ -6,12 +6,22 @@ import "core:strings"
 import "vendor:glfw"
 import "vendor:vulkan"
 
+import optional "../../../../optional/"
 import w "../window"
 
-ENABLE_VALIDATION_LAYERS :: #config(ENABLE_VALIDATION_LAYERS, false)
+ENABLE_VALIDATION_LAYERS :: #config(ENABLE_VALIDATION_LAYERS, true)
 
 validation_layers := []cstring{"VK_LAYER_KHRONOS_validation"}
-device_extensions := []cstring{vulkan.KHR_SWAPCHAIN_EXTENSION_NAME}
+
+when ODIN_OS == .Darwin {
+	device_extensions := []cstring {
+		vulkan.KHR_SWAPCHAIN_EXTENSION_NAME,
+		vulkan.KHR_PORTABILITY_SUBSET_EXTENSION_NAME,
+	}
+} else {
+	device_extensions := []cstring{vulkan.KHR_SWAPCHAIN_EXTENSION_NAME}
+}
+
 
 Device :: struct {
 	instance:        vulkan.Instance,
@@ -19,7 +29,7 @@ Device :: struct {
 	physical_device: vulkan.PhysicalDevice,
 	window:          ^w.Window,
 	command_pool:    vulkan.CommandPool,
-	logical_device:  vulkan.Device,
+	vk_device:       vulkan.Device,
 	surface:         vulkan.SurfaceKHR,
 	graphics_queue:  vulkan.Queue,
 	present_queue:   vulkan.Queue,
@@ -27,14 +37,9 @@ Device :: struct {
 	vk_allocator:    ^vulkan.AllocationCallbacks,
 }
 
-Optional :: struct($T: typeid) {
-	present: bool,
-	value:   T,
-}
-
 QueueFamilyIndices :: struct {
-	graphics_family: Optional(u32),
-	present_family:  Optional(u32),
+	graphics_family: optional.Optional(u32),
+	present_family:  optional.Optional(u32),
 }
 
 SwapchainSupportDetails :: struct {
@@ -82,16 +87,16 @@ alloc_swapchain_support :: proc(device: ^Device) -> ^SwapchainSupportDetails {
 	return alloc_query_swap_chain_support(device, device.physical_device)
 }
 
-begin_single_time_commands :: proc(device: ^Device) -> vulkan.CommandBuffer {
+begin_single_time_commands :: proc(using device: ^Device) -> vulkan.CommandBuffer {
 	alloc_info := vulkan.CommandBufferAllocateInfo {
 		sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
 		level              = .PRIMARY,
-		commandPool        = device.command_pool,
+		commandPool        = command_pool,
 		commandBufferCount = 1,
 	}
 
 	command_buffer: vulkan.CommandBuffer
-	vulkan.AllocateCommandBuffers(device.logical_device, &alloc_info, &command_buffer)
+	vulkan.AllocateCommandBuffers(vk_device, &alloc_info, &command_buffer)
 
 	begin_info := vulkan.CommandBufferBeginInfo {
 		sType = .COMMAND_BUFFER_BEGIN_INFO,
@@ -103,7 +108,7 @@ begin_single_time_commands :: proc(device: ^Device) -> vulkan.CommandBuffer {
 }
 
 copy_buffer :: proc(
-	device: ^Device,
+	using device: ^Device,
 	src_buffer: vulkan.Buffer,
 	dst_buffer: vulkan.Buffer,
 	size: vulkan.DeviceSize,
@@ -150,13 +155,13 @@ copy_buffer_to_image :: proc(
 }
 
 create_buffer :: proc(
-	device: ^Device,
+	using device: ^Device,
 	size: vulkan.DeviceSize,
 	usage: vulkan.BufferUsageFlags,
-	properties: vulkan.MemoryPropertyFlags,
+	property_flags: vulkan.MemoryPropertyFlags,
 	buffer: ^vulkan.Buffer,
 	buffer_memory: ^vulkan.DeviceMemory,
-	vk_allocator: ^vulkan.AllocationCallbacks = nil,
+	vk_allocator_buf: ^vulkan.AllocationCallbacks = nil,
 ) -> CreateBufferError {
 	buffer_info := vulkan.BufferCreateInfo {
 		sType       = .BUFFER_CREATE_INFO,
@@ -165,15 +170,15 @@ create_buffer :: proc(
 		sharingMode = .EXCLUSIVE,
 	}
 
-	if vulkan.CreateBuffer(device.logical_device, &buffer_info, vk_allocator, buffer) != .SUCCESS {
+	if vulkan.CreateBuffer(vk_device, &buffer_info, vk_allocator_buf, buffer) != .SUCCESS {
 		fmt.println("failed to create vertex buffer!")
 		return .VertexBufferCreationFailed
 	}
 
 	mem_requirements: vulkan.MemoryRequirements
-	vulkan.GetBufferMemoryRequirements(device.logical_device, buffer^, &mem_requirements)
+	vulkan.GetBufferMemoryRequirements(vk_device, buffer^, &mem_requirements)
 
-	err, memory_type := find_memory_type(device, mem_requirements.memoryTypeBits, properties)
+	err, memory_type := find_memory_type(device, mem_requirements.memoryTypeBits, property_flags)
 
 	if err != .None {
 		fmt.println("find memory type failed:", err)
@@ -186,18 +191,17 @@ create_buffer :: proc(
 		memoryTypeIndex = memory_type,
 	}
 
-	if vulkan.AllocateMemory(device.logical_device, &alloc_info, vk_allocator, buffer_memory) !=
-	   .SUCCESS {
+	if vulkan.AllocateMemory(vk_device, &alloc_info, vk_allocator, buffer_memory) != .SUCCESS {
 		fmt.println("failed to allocate vertex buffer memory!")
 		return .AllocateBufferFailed
 	}
 
-	vulkan.BindBufferMemory(device.logical_device, buffer^, buffer_memory^, 0)
+	vulkan.BindBufferMemory(vk_device, buffer^, buffer_memory^, 0)
 
 	return .None
 }
 
-create_command_pool :: proc(device: ^Device) -> bool {
+create_command_pool :: proc(using device: ^Device) -> bool {
 	queue_family_indices := find_physical_queue_families(device)
 
 	pool_info := vulkan.CommandPoolCreateInfo {
@@ -206,13 +210,7 @@ create_command_pool :: proc(device: ^Device) -> bool {
 		flags            = {.TRANSIENT, .RESET_COMMAND_BUFFER},
 	}
 
-	if vulkan.CreateCommandPool(
-		   device.logical_device,
-		   &pool_info,
-		   device.vk_allocator,
-		   &device.command_pool,
-	   ) !=
-	   .SUCCESS {
+	if vulkan.CreateCommandPool(vk_device, &pool_info, vk_allocator, &command_pool) != .SUCCESS {
 		fmt.println("failed to create command pool!")
 		return false
 	}
@@ -245,15 +243,26 @@ create_debug_utils_messenger_ext :: proc(
 	}
 }
 
-create_device :: proc(window: ^w.Window, device: ^Device) -> CreateDeviceError {
+create_device :: proc(
+	window: ^w.Window,
+	instance: ^vulkan.Instance,
+	device: ^Device,
+) -> CreateDeviceError {
 	device^ = {
 		window = window,
 	}
 
-	if !create_instance(device) {
-		fmt.println("Error creating logical device")
-		return .CreateLogicalDeviceFailed
+	if instance == nil {
+		if !create_instance(&device.instance) {
+			fmt.println("Error creating logical device")
+			return .CreateLogicalDeviceFailed
+		}
+	} else {
+		device.instance = instance^
 	}
+
+	// TODO(2025-04-26, Max Bolotin): Split Device up into Instance/Device so that the instanace can be separately inited by the main function which then can call load_proc_addresses_instance() from there, avoiding hard to reason about side effects
+	// vulkan.load_proc_addresses_instance(device.instance)
 
 	if !setup_debug_messenger(device) {
 		fmt.println("Error setting up debug messenger")
@@ -270,7 +279,7 @@ create_device :: proc(window: ^w.Window, device: ^Device) -> CreateDeviceError {
 		return .PickPhysicalDeviceFailed
 	}
 
-	if !create_logical_device(device) {
+	if !create_vk_device(device) {
 		fmt.println("Error creating logical device")
 		return .CreateLogicalDeviceFailed
 	}
@@ -284,22 +293,21 @@ create_device :: proc(window: ^w.Window, device: ^Device) -> CreateDeviceError {
 }
 
 create_image_with_info :: proc(
-	device: ^Device,
+	using device: ^Device,
 	image_info: ^vulkan.ImageCreateInfo,
-	properties: vulkan.MemoryPropertyFlags,
+	property_flags: vulkan.MemoryPropertyFlags,
 	image: ^vulkan.Image,
 	image_memory: ^vulkan.DeviceMemory,
 ) -> CreateImageWithInfoError {
-	if vulkan.CreateImage(device.logical_device, image_info, device.vk_allocator, image) !=
-	   .SUCCESS {
+	if vulkan.CreateImage(vk_device, image_info, vk_allocator, image) != .SUCCESS {
 		fmt.println("failed to create image!")
 		return .FailedToCreateImage
 	}
 
 	mem_requirements: vulkan.MemoryRequirements
-	vulkan.GetImageMemoryRequirements(device.logical_device, image^, &mem_requirements)
+	vulkan.GetImageMemoryRequirements(vk_device, image^, &mem_requirements)
 
-	err, memory_type := find_memory_type(device, mem_requirements.memoryTypeBits, properties)
+	err, memory_type := find_memory_type(device, mem_requirements.memoryTypeBits, property_flags)
 
 	if err != .None {
 		return .FailedToFindMemoryType
@@ -311,12 +319,12 @@ create_image_with_info :: proc(
 		memoryTypeIndex = memory_type,
 	}
 
-	if vulkan.AllocateMemory(device.logical_device, &alloc_info, nil, image_memory) != .SUCCESS {
+	if vulkan.AllocateMemory(vk_device, &alloc_info, nil, image_memory) != .SUCCESS {
 		fmt.println("failed to allocate image memory!")
 		return .FailedToAllocateImageMemory
 	}
 
-	if vulkan.BindImageMemory(device.logical_device, image^, image_memory^, 0) != .SUCCESS {
+	if vulkan.BindImageMemory(vk_device, image^, image_memory^, 0) != .SUCCESS {
 		fmt.println("failed to bind image memory!")
 		return .FailedToBindImageMemory
 	}
@@ -324,8 +332,8 @@ create_image_with_info :: proc(
 	return .None
 }
 
-create_instance :: proc(device: ^Device) -> bool {
-	if ENABLE_VALIDATION_LAYERS && !check_validation_layer_support(device) {
+create_instance :: proc(instance: ^vulkan.Instance) -> bool {
+	if ENABLE_VALIDATION_LAYERS && !check_validation_layer_support() {
 		fmt.println("validation layers requested, but not available")
 		return false
 	}
@@ -339,36 +347,44 @@ create_instance :: proc(device: ^Device) -> bool {
 		apiVersion         = vulkan.API_VERSION_1_0,
 	}
 
-	extensions := get_required_extensions(device)
+	extensions := get_required_extensions()
+	defer delete(extensions)
+	instance_flags := vulkan.InstanceCreateFlags{}
+
+	if ODIN_OS == .Darwin {
+		instance_flags |= {.ENUMERATE_PORTABILITY_KHR}
+	}
 
 	create_info := vulkan.InstanceCreateInfo {
 		sType                   = .INSTANCE_CREATE_INFO,
 		pApplicationInfo        = &app_info,
 		enabledExtensionCount   = u32(len(extensions)),
 		ppEnabledExtensionNames = &extensions[0],
+		flags                   = instance_flags,
 	}
 
 	debug_create_info: vulkan.DebugUtilsMessengerCreateInfoEXT
+
 	if ENABLE_VALIDATION_LAYERS {
 		create_info.enabledLayerCount = 1
 		create_info.ppEnabledLayerNames = &validation_layers[0]
 
-		populate_debug_messenger_create_info(device, &debug_create_info)
+		populate_debug_messenger_create_info(&debug_create_info)
 		create_info.pNext = &debug_create_info
 	} else {
 		create_info.enabledLayerCount = 0
 		create_info.pNext = nil
 	}
 
-	if (vulkan.CreateInstance(&create_info, nil, &device.instance) != .SUCCESS) {
+	if (vulkan.CreateInstance(&create_info, nil, instance) != .SUCCESS) {
 		return false
 	}
 
 	return true
 }
 
-create_logical_device :: proc(device: ^Device) -> bool {
-	indices := find_queue_families(device, device.physical_device)
+create_vk_device :: proc(using device: ^Device) -> bool {
+	indices := find_queue_families(device, physical_device)
 
 	unique_queue_families := make(map[u32]bool)
 	defer delete(unique_queue_families)
@@ -409,39 +425,19 @@ create_logical_device :: proc(device: ^Device) -> bool {
 		create_info.enabledLayerCount = 0
 	}
 
-	if vulkan.CreateDevice(
-		   device.physical_device,
-		   &create_info,
-		   device.vk_allocator,
-		   &device.logical_device,
-	   ) !=
-	   .SUCCESS {
+	if vulkan.CreateDevice(physical_device, &create_info, vk_allocator, &vk_device) != .SUCCESS {
 		return false
 	}
 
-	vulkan.GetDeviceQueue(
-		device.logical_device,
-		indices.graphics_family.value,
-		0,
-		&device.graphics_queue,
-	)
-
-	vulkan.GetDeviceQueue(
-		device.logical_device,
-		indices.graphics_family.value,
-		0,
-		&device.present_queue,
-	)
+	vulkan.GetDeviceQueue(vk_device, indices.graphics_family.value, 0, &graphics_queue)
+	vulkan.GetDeviceQueue(vk_device, indices.graphics_family.value, 0, &present_queue)
 
 	return true
 }
-create_surface :: proc(device: ^Device) -> bool {
+
+create_surface :: proc(using device: ^Device) -> bool {
 	err: w.CreateWindowSurfaceError
-	err, device.surface = w.create_window_surface(
-		device.window,
-		device.instance,
-		device.vk_allocator,
-	)
+	err, surface = w.create_window_surface(window, instance, vk_allocator)
 
 	if err != .None {
 		fmt.println("Error creating surface", err)
@@ -462,12 +458,12 @@ debug_callback :: proc "c" (
 	return false
 }
 
-deinit_swap_chain_support :: proc(details: ^SwapchainSupportDetails) {
-	if details.formats != nil {
-		delete(details.formats)
+deinit_swap_chain_support :: proc(using details: ^SwapchainSupportDetails) {
+	if formats != nil {
+		delete(formats)
 	}
-	if details.present_modes != nil {
-		delete(details.present_modes)
+	if present_modes != nil {
+		delete(present_modes)
 	}
 	free(details)
 }
@@ -487,23 +483,19 @@ destroy_debug_utils_messenger_ext :: proc(
 	}
 }
 
-destroy_device :: proc(device: ^Device) {
-	vulkan.DestroyCommandPool(device.logical_device, device.command_pool, device.vk_allocator)
-	vulkan.DestroyDevice(device.logical_device, device.vk_allocator)
+destroy_device :: proc(using device: ^Device) {
+	vulkan.DestroyCommandPool(vk_device, command_pool, vk_allocator)
+	vulkan.DestroyDevice(vk_device, vk_allocator)
 
 	if ENABLE_VALIDATION_LAYERS {
-		vulkan.DestroyDebugUtilsMessengerEXT(
-			device.instance,
-			device.debug_messenger,
-			device.vk_allocator,
-		)
+		vulkan.DestroyDebugUtilsMessengerEXT(instance, debug_messenger, vk_allocator)
 	}
 
-	vulkan.DestroySurfaceKHR(device.instance, device.surface, device.vk_allocator)
-	vulkan.DestroyInstance(device.instance, device.vk_allocator)
+	vulkan.DestroySurfaceKHR(instance, surface, vk_allocator)
+	vulkan.DestroyInstance(instance, vk_allocator)
 }
 
-end_single_time_commands :: proc(device: ^Device, command_buffer: vulkan.CommandBuffer) {
+end_single_time_commands :: proc(using device: ^Device, command_buffer: vulkan.CommandBuffer) {
 	vulkan.EndCommandBuffer(command_buffer)
 
 	// This seems to be necessary in Odin, because we can't take pointers to parameters?
@@ -515,25 +507,25 @@ end_single_time_commands :: proc(device: ^Device, command_buffer: vulkan.Command
 		pCommandBuffers    = &cbuf,
 	}
 
-	vulkan.QueueSubmit(device.graphics_queue, 1, &submit_info, 0)
-	vulkan.QueueWaitIdle(device.graphics_queue)
+	vulkan.QueueSubmit(graphics_queue, 1, &submit_info, 0)
+	vulkan.QueueWaitIdle(graphics_queue)
 
-	vulkan.FreeCommandBuffers(device.logical_device, device.command_pool, 1, &cbuf)
+	vulkan.FreeCommandBuffers(vk_device, command_pool, 1, &cbuf)
 }
 
 find_memory_type :: proc(
-	device: ^Device,
+	using device: ^Device,
 	type_filter: u32,
-	properties: vulkan.MemoryPropertyFlags,
+	property_flags: vulkan.MemoryPropertyFlags,
 ) -> (
 	FindMemoryTypeError,
 	u32,
 ) {
 	mem_properties: vulkan.PhysicalDeviceMemoryProperties
-	vulkan.GetPhysicalDeviceMemoryProperties(device.physical_device, &mem_properties)
+	vulkan.GetPhysicalDeviceMemoryProperties(physical_device, &mem_properties)
 	for i in 0 ..< mem_properties.memoryTypeCount {
 		if type_filter & (1 << i) != 0 &&
-		   mem_properties.memoryTypes[i].propertyFlags & properties != {} {
+		   mem_properties.memoryTypes[i].propertyFlags & property_flags != {} {
 			return .None, i
 		}
 	}
@@ -541,12 +533,12 @@ find_memory_type :: proc(
 	return .NoSuitableMemoryType, 0
 }
 
-find_physical_queue_families :: proc(device: ^Device) -> QueueFamilyIndices {
-	return find_queue_families(device, device.physical_device)
+find_physical_queue_families :: proc(using device: ^Device) -> QueueFamilyIndices {
+	return find_queue_families(device, physical_device)
 }
 
 find_supported_format :: proc(
-	device: ^Device,
+	using device: ^Device,
 	candidates: []vulkan.Format,
 	tiling: vulkan.ImageTiling,
 	features: vulkan.FormatFeatureFlags,
@@ -556,11 +548,11 @@ find_supported_format :: proc(
 ) {
 	for format in candidates {
 		props: vulkan.FormatProperties
-		vulkan.GetPhysicalDeviceFormatProperties(device.physical_device, format, &props)
+		vulkan.GetPhysicalDeviceFormatProperties(physical_device, format, &props)
 
 		if tiling == .LINEAR && (props.linearTilingFeatures & features) == features {
 			return .None, format
-		} else if (tiling == .OPTIMAL && (props.optimalTilingFeatures & features) == features) {
+		} else if tiling == .OPTIMAL && (props.optimalTilingFeatures & features) == features {
 			return .None, format
 		}
 	}
@@ -568,13 +560,13 @@ find_supported_format :: proc(
 	return .SupportedFormatNotFound, vulkan.Format{}
 }
 
-is_indices_complete :: proc(indices: QueueFamilyIndices) -> bool {
-	return indices.present_family.present && indices.graphics_family.present
+is_indices_complete :: proc(using indices: QueueFamilyIndices) -> bool {
+	return present_family.present && graphics_family.present
 }
 
-pick_physical_device :: proc(device: ^Device) -> bool {
+pick_physical_device :: proc(using device: ^Device) -> bool {
 	device_count: u32 = 0
-	vulkan.EnumeratePhysicalDevices(device.instance, &device_count, nil)
+	vulkan.EnumeratePhysicalDevices(instance, &device_count, nil)
 
 	if device_count == 0 {
 		fmt.println("failed to find GPUs with Vulkan support!")
@@ -585,22 +577,21 @@ pick_physical_device :: proc(device: ^Device) -> bool {
 	devices := make([]vulkan.PhysicalDevice, device_count)
 	defer delete(devices)
 
-	vulkan.EnumeratePhysicalDevices(device.instance, &device_count, &devices[0])
+	vulkan.EnumeratePhysicalDevices(instance, &device_count, &devices[0])
 
-	for physical_device in devices {
-		if is_device_suitable(device, physical_device) {
-			device.physical_device = physical_device
+	for pdevice in devices {
+		if is_device_suitable(device, pdevice) {
+			physical_device = pdevice
 			break
 		}
 	}
 
-	if device.physical_device == nil {
+	if physical_device == nil {
 		fmt.println("failed to find a suitable GPU!")
 		return false
 	}
 
-	vulkan.GetPhysicalDeviceProperties(device.physical_device, &device.properties)
-	fmt.println("physical device:", device.properties.deviceName)
+	vulkan.GetPhysicalDeviceProperties(physical_device, &properties)
 
 	return true
 }
@@ -611,7 +602,12 @@ check_device_extension_support :: proc(physical_device: vulkan.PhysicalDevice) -
 	vulkan.EnumerateDeviceExtensionProperties(physical_device, nil, &extension_count, nil)
 	available_extensions := make([]vulkan.ExtensionProperties, extension_count)
 	defer delete(available_extensions)
-	vulkan.EnumerateDeviceExtensionProperties(physical_device, nil, &extension_count, nil)
+	vulkan.EnumerateDeviceExtensionProperties(
+		physical_device,
+		nil,
+		&extension_count,
+		&available_extensions[0],
+	)
 
 	required_extensions := make(map[cstring]bool)
 	defer delete(required_extensions)
@@ -629,7 +625,7 @@ check_device_extension_support :: proc(physical_device: vulkan.PhysicalDevice) -
 }
 
 @(private)
-check_validation_layer_support :: proc(device: ^Device) -> bool {
+check_validation_layer_support :: proc() -> bool {
 	layer_count: u32
 	vulkan.EnumerateInstanceLayerProperties(&layer_count, nil)
 
@@ -657,42 +653,33 @@ check_validation_layer_support :: proc(device: ^Device) -> bool {
 
 @(private)
 alloc_query_swap_chain_support :: proc(
-	device: ^Device,
-	physical_device: vulkan.PhysicalDevice,
+	using device: ^Device,
+	p_device: vulkan.PhysicalDevice,
 ) -> ^SwapchainSupportDetails {
 	details := new(SwapchainSupportDetails)
 
-	vulkan.GetPhysicalDeviceSurfaceCapabilitiesKHR(
-		physical_device,
-		device.surface,
-		&details.capabilities,
-	)
+	vulkan.GetPhysicalDeviceSurfaceCapabilitiesKHR(p_device, surface, &details.capabilities)
 
 	format_count: u32
-	vulkan.GetPhysicalDeviceSurfaceFormatsKHR(physical_device, device.surface, &format_count, nil)
+	vulkan.GetPhysicalDeviceSurfaceFormatsKHR(p_device, surface, &format_count, nil)
 	if format_count != 0 {
 		details.formats = make([]vulkan.SurfaceFormatKHR, format_count)
 		vulkan.GetPhysicalDeviceSurfaceFormatsKHR(
-			physical_device,
-			device.surface,
+			p_device,
+			surface,
 			&format_count,
 			&details.formats[0],
 		)
 	}
 
 	present_mode_count: u32
-	vulkan.GetPhysicalDeviceSurfacePresentModesKHR(
-		physical_device,
-		device.surface,
-		&present_mode_count,
-		nil,
-	)
+	vulkan.GetPhysicalDeviceSurfacePresentModesKHR(p_device, surface, &present_mode_count, nil)
 
 	if present_mode_count != 0 {
 		details.present_modes = make([]vulkan.PresentModeKHR, present_mode_count)
 		vulkan.GetPhysicalDeviceSurfacePresentModesKHR(
-			physical_device,
-			device.surface,
+			p_device,
+			surface,
 			&present_mode_count,
 			&details.present_modes[0],
 		)
@@ -703,26 +690,33 @@ alloc_query_swap_chain_support :: proc(
 
 @(private)
 populate_debug_messenger_create_info :: proc(
-	device: ^Device,
 	create_info: ^vulkan.DebugUtilsMessengerCreateInfoEXT,
-) {}
+) {
+	create_info^ = {
+		sType           = .DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+		messageSeverity = {.WARNING, .ERROR},
+		messageType     = {.GENERAL, .VALIDATION, .PERFORMANCE},
+		pfnUserCallback = debug_callback,
+		pUserData       = nil,
+	}
+}
 
 @(private)
-is_device_suitable :: proc(device: ^Device, physical_device: vulkan.PhysicalDevice) -> bool {
-	indices := find_queue_families(device, device.physical_device)
+is_device_suitable :: proc(using device: ^Device, p_device: vulkan.PhysicalDevice) -> bool {
+	indices := find_queue_families(device, p_device)
 
-	extension_supported := check_device_extension_support(physical_device)
+	extension_supported := check_device_extension_support(p_device)
 
 	swapchain_adequate := false
 	if extension_supported {
-		swapchain_support := alloc_query_swap_chain_support(device, physical_device)
+		swapchain_support := alloc_query_swap_chain_support(device, p_device)
 		defer deinit_swap_chain_support(swapchain_support)
 		swapchain_adequate =
 			len(swapchain_support.formats) != 0 && len(swapchain_support.present_modes) != 0
 	}
 
 	supported_features: vulkan.PhysicalDeviceFeatures
-	vulkan.GetPhysicalDeviceFeatures(physical_device, &supported_features)
+	vulkan.GetPhysicalDeviceFeatures(p_device, &supported_features)
 
 	return(
 		is_indices_complete(indices) &&
@@ -733,7 +727,7 @@ is_device_suitable :: proc(device: ^Device, physical_device: vulkan.PhysicalDevi
 }
 
 @(private)
-has_glfw_required_instance_extensions :: proc(device: ^Device) -> bool {
+has_glfw_required_instance_extensions :: proc(using device: ^Device) -> bool {
 	extension_count: u32 = 0
 	vulkan.EnumerateInstanceExtensionProperties(nil, &extension_count, nil)
 	extensions := make([]vulkan.ExtensionProperties, extension_count)
@@ -750,7 +744,7 @@ has_glfw_required_instance_extensions :: proc(device: ^Device) -> bool {
 	}
 
 	fmt.println("required extensions:")
-	required_extensions := get_required_extensions(device)
+	required_extensions := get_required_extensions()
 
 	for &required in required_extensions {
 		fmt.println("\t", required)
@@ -765,18 +759,18 @@ has_glfw_required_instance_extensions :: proc(device: ^Device) -> bool {
 
 @(private)
 find_queue_families :: proc(
-	device: ^Device,
-	physical_device: vulkan.PhysicalDevice,
+	using device: ^Device,
+	p_device: vulkan.PhysicalDevice,
 ) -> QueueFamilyIndices {
 	indices: QueueFamilyIndices
 
 	queue_family_count: u32 = 0
-	vulkan.GetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nil)
+	vulkan.GetPhysicalDeviceQueueFamilyProperties(p_device, &queue_family_count, nil)
 
 	queue_families := make([]vulkan.QueueFamilyProperties, queue_family_count)
 
 	vulkan.GetPhysicalDeviceQueueFamilyProperties(
-		physical_device,
+		p_device,
 		&queue_family_count,
 		&queue_families[0],
 	)
@@ -790,12 +784,7 @@ find_queue_families :: proc(
 			}
 		}
 		present_support: b32 = false
-		vulkan.GetPhysicalDeviceSurfaceSupportKHR(
-			physical_device,
-			i,
-			device.surface,
-			&present_support,
-		)
+		vulkan.GetPhysicalDeviceSurfaceSupportKHR(p_device, i, surface, &present_support)
 		if queue_family.queueCount > 0 && present_support {
 			indices.present_family = {
 				value   = i,
@@ -812,7 +801,7 @@ find_queue_families :: proc(
 }
 
 @(private)
-get_required_extensions :: proc(device: ^Device) -> []cstring {
+get_required_extensions :: proc() -> [dynamic]cstring {
 	glfw_extensions := glfw.GetRequiredInstanceExtensions()
 	extensions := make([dynamic]cstring)
 
@@ -828,22 +817,22 @@ get_required_extensions :: proc(device: ^Device) -> []cstring {
 		append(&extensions, vulkan.EXT_DEBUG_UTILS_EXTENSION_NAME)
 	}
 
-	return extensions[:]
+	return extensions
 }
 
-setup_debug_messenger :: proc(device: ^Device) -> bool {
+setup_debug_messenger :: proc(using device: ^Device) -> bool {
 	if !ENABLE_VALIDATION_LAYERS {
 		return true
 	}
 
 	create_info: vulkan.DebugUtilsMessengerCreateInfoEXT
-	populate_debug_messenger_create_info(device, &create_info)
+	populate_debug_messenger_create_info(&create_info)
 
 	if (vulkan.CreateDebugUtilsMessengerEXT(
-			   device.instance,
+			   instance,
 			   &create_info,
-			   device.vk_allocator,
-			   &device.debug_messenger,
+			   vk_allocator,
+			   &debug_messenger,
 		   ) !=
 		   .SUCCESS) {
 		return false
