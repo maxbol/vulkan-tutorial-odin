@@ -11,14 +11,6 @@ Mat2 :: distinct l.Matrix2x2f32
 Mat3 :: distinct l.Matrix3x3f32
 Mat4 :: distinct l.Matrix4x4f32
 
-VEC2_ONES :: Vec2{1, 1}
-VEC3_ONES :: Vec3{1, 1, 1}
-VEC4_ONES :: Vec4{1, 1, 1, 1}
-
-MAT2_ONES :: Mat2{1, 1, 1, 1}
-MAT3_ONES :: Mat3{1, 1, 1, 1, 1, 1, 1, 1, 1}
-MAT4_ONES :: Mat4{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
-
 vec2 :: proc(x: f32, y: f32) -> Vec2 {
 	return {x, y}
 }

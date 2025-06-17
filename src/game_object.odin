@@ -1,6 +1,7 @@
 package main
 
 import m "../src/renderer/backends/vulkan/model/"
+import "core:math"
 import optional "optional"
 import um "unitmath"
 
@@ -51,4 +52,57 @@ make_point_light :: proc(
 		value = {light_intensity = intensity},
 	}
 	return game_object
+}
+
+transform_to_mat4 :: proc(transform: TransformComponent) -> um.Mat4 {
+	using math, um, transform
+	c3 := cos(rotation.z)
+	s3 := sin(rotation.z)
+	c2 := cos(rotation.x)
+	s2 := sin(rotation.x)
+	c1 := cos(rotation.y)
+	s1 := sin(rotation.y)
+
+	return Mat4 {
+		scale.x * (c1 * c3 + s1 * s2 * s3),
+		scale.x * (c2 * s3),
+		scale.x * (c1 * s2 * s3 - c3 * s1),
+		0.0,
+		scale.y * (c3 * s1 * s2 - c1 * s3),
+		scale.y * (c2 * c3),
+		scale.y * (c1 * c3 * s2 + s1 * s3),
+		0.0,
+		scale.z * (c2 * s1),
+		scale.z * (-s2),
+		scale.z * (c1 * c2),
+		0.0,
+		translation.x,
+		translation.y,
+		translation.z,
+		1.0,
+	}
+}
+
+transform_to_normal_mat :: proc(transform: TransformComponent) -> um.Mat3 {
+	using math, transform, um
+	c3 := cos(rotation.z)
+	s3 := sin(rotation.z)
+	c2 := cos(rotation.x)
+	s2 := sin(rotation.x)
+	c1 := cos(rotation.y)
+	s1 := sin(rotation.y)
+	inv_scale := vec3(1, 1, 1) / scale
+
+	return Mat3 {
+		inv_scale.x * (c1 * c3 + s1 * s2 * s3),
+		inv_scale.x * (c2 * s3),
+		inv_scale.x * (c1 * s2 * s3 - c3 * s1),
+		inv_scale.y * (c3 * s1 * s2 - c1 * s3),
+		inv_scale.y * (c2 * c3),
+		inv_scale.y * (c1 * c3 * s2 + s1 * s3),
+		inv_scale.z * (c2 * s1),
+		inv_scale.z * (-s2),
+		inv_scale.z * (c1 * c2),
+	}
+
 }

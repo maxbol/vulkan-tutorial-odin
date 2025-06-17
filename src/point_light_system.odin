@@ -129,7 +129,7 @@ create_pipeline :: proc(using pls: ^PointLightSystem, render_pass: vulkan.Render
 
 pls_update :: proc(frame_info: ^FrameInfo, ubo: ^GlobalUbo) {
 	using um, linalg
-	rotate_light := MAT4_ONES * matrix4_rotate_f32(0.5 * frame_info.frame_time, {0., -1., 0.})
+	rotate_light := Mat4(1) * matrix4_rotate_f32(0.5 * frame_info.frame_time, {0., -1., 0.})
 	light_index: int = 0
 
 	for id, &obj in frame_info.game_objects {
@@ -141,16 +141,13 @@ pls_update :: proc(frame_info: ^FrameInfo, ubo: ^GlobalUbo) {
 
 		obj.transform.translation = (rotate_light * vec4(obj.transform.translation, 1)).xyz
 
-		ubo.point_lights[light_index].position = vec4(obj.transform.translation, 1)
-		ubo.point_lights[light_index].color = vec4(
-			obj.color,
-			obj.point_light.value.light_intensity,
-		)
+		ubo.pointLights[light_index].position = vec4(obj.transform.translation, 1)
+		ubo.pointLights[light_index].color = vec4(obj.color, obj.point_light.value.light_intensity)
 
 		light_index += 1
 	}
 
-	ubo.num_lights = light_index
+	ubo.numLights = light_index
 }
 
 pls_render :: proc(using pls: ^PointLightSystem, frame_info: ^FrameInfo) {

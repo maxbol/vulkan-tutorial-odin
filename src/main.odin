@@ -49,11 +49,6 @@ run_game :: proc(
 	}
 
 	bindings := make(map[u32]vulkan.DescriptorSetLayoutBinding)
-	defer {
-		fmt.println("->")
-		delete(bindings)
-		fmt.println("<-")
-	}
 
 	ds.bind_descriptor_set_layout(
 		&bindings,
@@ -111,14 +106,13 @@ run_game :: proc(
 	for !w.should_close(window) {
 		using math
 
-		fmt.println("bindings", bindings)
-
 		glfw.PollEvents()
 
 		new_time := time.tick_now()
 		frame_time := f32(time.tick_diff(current_time, new_time)) / 1_000_000_000
 		current_time = new_time
 
+		mouse_lookaround(window, frame_time, &viewer_object)
 		move_in_plane_xyz(window.handle, frame_time, &viewer_object)
 		c.camera_set_view_xyz(
 			&camera,
@@ -150,11 +144,7 @@ run_game :: proc(
 			game_objects,
 		}
 
-		ubo := GlobalUbo {
-			projection   = camera.projection_matrix,
-			view         = camera.view_matrix,
-			inverse_view = camera.inverse_view_matrix,
-		}
+		ubo := global_ubo(camera.projection_matrix, camera.view_matrix, camera.inverse_view_matrix)
 
 		pls_update(&frame_info, &ubo)
 
@@ -291,7 +281,7 @@ load_game_objects :: proc(device: ^d.Device) -> (bool, GameObjectMap) {
 		point_light := make_point_light(0.2)
 		point_light.color = light_colors[i]
 		rotate_light :=
-			MAT4_ONES *
+			um.Mat4(1) *
 			linalg.matrix4_rotate_f32((f32(i) * math.TAU) / f32(len(light_colors)), {0, -1, 0})
 		point_light.transform.translation = (rotate_light * Vec4{-1, -1, -1, 1}).xyz
 		game_objects[point_light.id] = point_light

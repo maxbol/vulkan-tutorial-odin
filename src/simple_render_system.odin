@@ -6,6 +6,7 @@ import p "renderer/backends/vulkan/pipeline"
 import um "unitmath"
 
 import "core:fmt"
+import l "core:math/linalg"
 import "vendor:vulkan"
 
 SimpleRenderSystem :: struct {
@@ -18,6 +19,13 @@ SimpleRenderSystem :: struct {
 SimplePushConstantData :: struct {
 	model_matrix:  um.Mat4,
 	normal_matrix: um.Mat4,
+}
+
+create_simple_push_constant_data :: proc() -> SimplePushConstantData {
+	return SimplePushConstantData {
+		model_matrix = um.Mat4{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+		normal_matrix = um.Mat4{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+	}
 }
 
 @(private = "file")
@@ -130,9 +138,10 @@ srs_render_game_objects :: proc(using srs: ^SimpleRenderSystem, frame_info: ^Fra
 		if !obj.model.present {
 			continue
 		}
-		push: SimplePushConstantData = {
-			model_matrix = obj.transform.mat4,
-		}
+		push := create_simple_push_constant_data()
+
+		push.model_matrix = transform_to_mat4(obj.transform)
+		push.normal_matrix = l.matrix4_from_matrix3(transform_to_normal_mat(obj.transform))
 
 		vulkan.CmdPushConstants(
 			frame_info.command_buffer,

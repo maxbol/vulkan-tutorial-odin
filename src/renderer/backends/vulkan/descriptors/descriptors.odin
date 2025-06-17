@@ -85,6 +85,7 @@ descriptor_set_layout_create :: proc(
 }
 
 descriptor_set_layout_destroy :: proc(using dsl: ^DescriptorSetLayout) {
+	delete(bindings)
 	vulkan.DestroyDescriptorSetLayout(device.vk_device, vk_descriptor_set_layout, vk_allocator)
 }
 

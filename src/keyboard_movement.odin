@@ -25,10 +25,10 @@ keys := Mappings {
 	move_backward = glfw.KEY_S,
 	move_up       = glfw.KEY_E,
 	move_down     = glfw.KEY_Q,
-	look_left     = glfw.KEY_H,
-	look_right    = glfw.KEY_L,
-	look_up       = glfw.KEY_K,
-	look_down     = glfw.KEY_J,
+	look_left     = glfw.KEY_LEFT,
+	look_right    = glfw.KEY_RIGHT,
+	look_up       = glfw.KEY_UP,
+	look_down     = glfw.KEY_DOWN,
 }
 
 move_speed: f32 = 3

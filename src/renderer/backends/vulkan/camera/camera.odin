@@ -19,7 +19,7 @@ camera_set_orthographic_projection :: proc(
 	near: f32,
 	far: f32,
 ) {
-	projection_matrix = um.MAT4_ONES
+	projection_matrix = um.Mat4(1)
 	projection_matrix[0][0] = 2 / (right - left)
 	projection_matrix[1][1] = 2 / (bottom - top)
 	projection_matrix[2][2] = 1 / (far - near)
@@ -37,7 +37,7 @@ camera_set_perspective_projection :: proc(
 ) {
 	assert(abs(aspect - m.F32_EPSILON) > 0)
 	tan_half_fovy := m.tan(fovy / 2)
-	projection_matrix = um.Mat4{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	projection_matrix = um.Mat4(0)
 	projection_matrix[0][0] = 1 / (aspect * tan_half_fovy)
 	projection_matrix[1][1] = 1 / (tan_half_fovy)
 	projection_matrix[2][2] = far / (far - near)
@@ -56,7 +56,7 @@ camera_set_view_direction :: proc(
 	u := normalize_vec(cross(w, up))
 	v := cross(w, u)
 
-	view_matrix = MAT4_ONES
+	view_matrix = um.Mat4(1)
 	view_matrix[0][0] = u.x
 	view_matrix[1][0] = u.y
 	view_matrix[2][0] = u.z
@@ -70,7 +70,7 @@ camera_set_view_direction :: proc(
 	view_matrix[3][1] = -dot(v, position)
 	view_matrix[3][2] = -dot(w, position)
 
-	inverse_view_matrix = MAT4_ONES
+	inverse_view_matrix = um.Mat4(1)
 	view_matrix[0][0] = u.x
 	view_matrix[0][1] = u.y
 	view_matrix[0][2] = u.z
@@ -106,7 +106,7 @@ camera_set_view_xyz :: proc(using camera: ^Camera, position: um.Vec3, rotation: 
 	v := Vec3{(c3 * s1 * s2 - c1 * s3), (c2 * c3), (c1 * c3 * s2 + s1 * s3)}
 	w := Vec3{(c2 * s1), (-s2), (c1 * c2)}
 
-	view_matrix = MAT4_ONES
+	view_matrix = um.Mat4(1)
 
 	view_matrix[0][0] = u.x
 	view_matrix[1][0] = u.y
@@ -121,7 +121,7 @@ camera_set_view_xyz :: proc(using camera: ^Camera, position: um.Vec3, rotation: 
 	view_matrix[3][1] = -dot(v, position)
 	view_matrix[3][2] = -dot(w, position)
 
-	inverse_view_matrix = MAT4_ONES
+	inverse_view_matrix = um.Mat4(1)
 	inverse_view_matrix[0][0] = u.x
 	inverse_view_matrix[0][1] = u.y
 	inverse_view_matrix[0][2] = u.z

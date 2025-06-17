@@ -41,6 +41,13 @@ create_window :: proc(w: i32, h: i32, name: string) -> (CreateWindowError, Windo
 		return .GLFWCreateWindowFailed, Window{}
 	}
 
+	glfw.SetInputMode(handle, glfw.CURSOR, glfw.CURSOR_DISABLED)
+	if glfw.RawMouseMotionSupported() {
+		fmt.println("Raw mouse motion supported")
+		glfw.SetInputMode(handle, glfw.RAW_MOUSE_MOTION, 1)
+	} else {
+		fmt.println("Raw mouse motion not supported")
+	}
 
 	window := Window {
 		height      = h,
