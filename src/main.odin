@@ -114,6 +114,9 @@ run_game :: proc(
 
 		mouse_lookaround(window, frame_time, &viewer_object)
 		move_in_plane_xyz(window.handle, frame_time, &viewer_object)
+
+		(&game_objects[0]).transform.translation.x += 0.1 * frame_time
+
 		c.camera_set_view_xyz(
 			&camera,
 			viewer_object.transform.translation,
@@ -171,7 +174,7 @@ main :: proc() {
 		fmt.println("Error creating GLFW window", err)
 		return
 	}
-	defer w.destroy_window(&window)
+	defer w.destroy_window(window)
 
 	device: d.Device
 	renderer: r.Renderer
@@ -187,12 +190,12 @@ main :: proc() {
 	d.create_instance(&instance)
 	vulkan.load_proc_addresses(instance)
 
-	d.create_device(&window, &instance, &device)
+	d.create_device(window, &instance, &device)
 	defer d.destroy_device(&device)
 
 	vulkan.load_proc_addresses_device(device.vk_device)
 
-	r.create_renderer(&window, &device, &renderer)
+	r.create_renderer(window, &device, &renderer)
 	defer r.destroy_renderer(&renderer)
 
 	ds.descriptor_pool_create(
@@ -211,7 +214,7 @@ main :: proc() {
 	}
 	defer unload_game_objects(game_objects)
 
-	if !run_game(&device, &window, &renderer, &global_pool, &game_objects) {
+	if !run_game(&device, window, &renderer, &global_pool, &game_objects) {
 		fmt.println("Exited with non-ok result")
 	}
 }
@@ -240,7 +243,7 @@ load_game_objects :: proc(device: ^d.Device) -> (bool, GameObjectMap) {
 		value   = model,
 		present = true,
 	}
-	flat_vase.transform.translation = {-.5, .5, 0}
+	flat_vase.transform.translation = {.5, .5, 0}
 	flat_vase.transform.scale = {3, 1.5, 3}
 	game_objects[flat_vase.id] = flat_vase
 
@@ -252,7 +255,7 @@ load_game_objects :: proc(device: ^d.Device) -> (bool, GameObjectMap) {
 		value   = model,
 		present = true,
 	}
-	smooth_vase.transform.translation = {.5, .5, 0}
+	smooth_vase.transform.translation = {-.5, .5, 0}
 	smooth_vase.transform.scale = {3, 1.5, 3}
 	game_objects[smooth_vase.id] = smooth_vase
 

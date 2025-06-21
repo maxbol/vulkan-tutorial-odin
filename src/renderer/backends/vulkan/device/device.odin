@@ -685,6 +685,8 @@ alloc_query_swap_chain_support :: proc(
 		)
 	}
 
+	fmt.println(details)
+
 	return details
 }
 
@@ -809,7 +811,10 @@ get_required_extensions :: proc() -> [dynamic]cstring {
 		append(&extensions, glfw_extension)
 	}
 
-	append(&extensions, vulkan.KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)
+	if ODIN_OS == .Darwin {
+		append(&extensions, vulkan.KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)
+	}
+
 	append(&extensions, vulkan.KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME)
 	append(&extensions, vulkan.KHR_SURFACE_EXTENSION_NAME)
 

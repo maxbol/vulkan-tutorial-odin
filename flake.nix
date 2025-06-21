@@ -16,23 +16,30 @@
         allowUnsupportedSystem = true;
       };
     };
-    odin-override =
-      (pkgs.odin.override
-        {
-          MacOSX-SDK = "${pkgs.apple-sdk_14.sdkroot}";
-        })
+    odin-macos-override = (pkgs.odin.override
+      {
+        MacOSX-SDK = "${pkgs.apple-sdk_14.sdkroot}";
+      })
       .overrideAttrs rec {
-        version = "dev-2025-04";
-        src = pkgs.fetchFromGitHub {
-          owner = "odin-lang";
-          repo = "Odin";
-          rev = version;
-          hash = "sha256-dVC7MgaNdgKy3X9OE5ZcNCPnuDwqXszX9iAoUglfz2k=";
-        };
+      version = "dev-2025-04";
+      src = pkgs.fetchFromGitHub {
+        owner = "odin-lang";
+        repo = "Odin";
+        rev = version;
+        hash = "sha256-dVC7MgaNdgKy3X9OE5ZcNCPnuDwqXszX9iAoUglfz2k=";
       };
-    ols-override = pkgs.ols.override {
-      odin = odin-override;
     };
+    ols-macos-override = pkgs.ols.override {
+      odin = odin-macos-override;
+    };
+    odin-override =
+      if pkgs.stdenv.hostPlatform.isDarwin
+      then odin-macos-override
+      else pkgs.odin;
+    ols-override =
+      if pkgs.stdenv.hostPlatform.isDarwin
+      then ols-macos-override
+      else pkgs.ols;
   in
     with pkgs; let
       pname = "vulkan-tutorial-odin";
@@ -46,17 +53,28 @@
             ];
           };
         });
-      in [
-        odin-override
-        vulkan-headers
-        vulkan-loader
-        vulkan-validation-layers
-        moltenvk
-        vulkan-tools
-        vulkan-utility-libraries
-        glfw-vulkan-macos-fix
-        shaderc
-      ];
+      in
+        [
+          ols-override
+          odin-override
+          vulkan-headers
+          vulkan-loader
+          vulkan-validation-layers
+          vulkan-tools
+          vulkan-utility-libraries
+          shaderc
+        ]
+        ++ (
+          lib.optionals (pkgs.stdenv.hostPlatform.isDarwin) [
+            moltenvk
+            glfw-vulkan-macos-fix
+          ]
+        )
+        ++ (
+          lib.optionals (pkgs.stdenv.hostPlatform.isLinux) [
+            glfw
+          ]
+        );
 
       nativeBuildInputs = [
         pkg-config
@@ -96,6 +114,7 @@
               lldb_17
               bear
               stdmanpages
+              vulkan-tools-lunarg
             ]
             ++ (with llvmPackages_17; [
               clang-manpages
@@ -103,7 +122,12 @@
             ]);
 
           VK_LAYER_PATH = "${vulkan-validation-layers}/share/vulkan/explicit_layer.d";
-          VK_ICD_FILENAMES = "${moltenvk}/share/vulkan/icd.d/MoltenVK_icd.json";
+          # VULKAN_SDK = "${vulkan-validation-layers}/share/vulkan/explicit_layer.d";
+          # LD_LIBRARY_PATH = "${glfw}/lib:${freetype}/lib:${vulkan-loader}/lib:${vulkan-validation-layers}/lib";
+          VK_ICD_FILENAMES =
+            if pkgs.stdenv.hostPlatform.isDarwin == true
+            then "${moltenvk}/share/vulkan/icd.d/MoltenVK_icd.json"
+            else null;
         };
       };
     }));

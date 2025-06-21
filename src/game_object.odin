@@ -67,18 +67,18 @@ transform_to_mat4 :: proc(transform: TransformComponent) -> um.Mat4 {
 		scale.x * (c1 * c3 + s1 * s2 * s3),
 		scale.x * (c2 * s3),
 		scale.x * (c1 * s2 * s3 - c3 * s1),
-		0.0,
+		translation.x,
 		scale.y * (c3 * s1 * s2 - c1 * s3),
 		scale.y * (c2 * c3),
 		scale.y * (c1 * c3 * s2 + s1 * s3),
-		0.0,
+		translation.y,
 		scale.z * (c2 * s1),
 		scale.z * (-s2),
 		scale.z * (c1 * c2),
-		0.0,
-		translation.x,
-		translation.y,
 		translation.z,
+		0.0,
+		0.0,
+		0.0,
 		1.0,
 	}
 }
@@ -104,5 +104,4 @@ transform_to_normal_mat :: proc(transform: TransformComponent) -> um.Mat3 {
 		inv_scale.z * (-s2),
 		inv_scale.z * (c1 * c2),
 	}
-
 }

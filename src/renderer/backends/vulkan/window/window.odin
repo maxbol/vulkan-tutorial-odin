@@ -25,11 +25,11 @@ CreateWindowSurfaceError :: enum {
 	GLFWCreateWindowSurfaceFailed,
 }
 
-create_window :: proc(w: i32, h: i32, name: string) -> (CreateWindowError, Window) {
+create_window :: proc(w: i32, h: i32, name: string) -> (CreateWindowError, ^Window) {
 	ok := glfw.Init()
 	if !ok {
 		fmt.println("Error initializing GLFW")
-		return .GLFWInitFailed, Window{}
+		return .GLFWInitFailed, nil
 	}
 
 	glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
@@ -38,7 +38,7 @@ create_window :: proc(w: i32, h: i32, name: string) -> (CreateWindowError, Windo
 	handle := glfw.CreateWindow(w, h, strings.clone_to_cstring(name), nil, nil)
 
 	if handle == nil {
-		return .GLFWCreateWindowFailed, Window{}
+		return .GLFWCreateWindowFailed, nil
 	}
 
 	glfw.SetInputMode(handle, glfw.CURSOR, glfw.CURSOR_DISABLED)
@@ -49,14 +49,16 @@ create_window :: proc(w: i32, h: i32, name: string) -> (CreateWindowError, Windo
 		fmt.println("Raw mouse motion not supported")
 	}
 
-	window := Window {
+	window := new(Window)
+
+	window^ = {
 		height      = h,
 		width       = w,
 		window_name = name,
 		handle      = handle,
 	}
 
-	glfw.SetWindowUserPointer(handle, &window)
+	glfw.SetWindowUserPointer(handle, window)
 	glfw.SetFramebufferSizeCallback(handle, framebuffer_resize_callback)
 
 	return .None, window

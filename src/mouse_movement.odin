@@ -15,9 +15,9 @@ MousePosition :: struct {
 position := MousePosition{}
 mouse_moved := false
 
-mouse_look_speed: f32 = 3
+mouse_sensitivity: f32 = 3000
 
-mouse_lookaround :: proc(window: ^w.Window, dt: f32, camera_object: ^GameObject) {
+mouse_lookaround :: proc(window: ^w.Window, dt: f32, viewer: ^GameObject) {
 	using um
 	last_pos := position
 	xpos, ypos := glfw.GetCursorPos(window.handle)
@@ -28,19 +28,19 @@ mouse_lookaround :: proc(window: ^w.Window, dt: f32, camera_object: ^GameObject)
 		return
 	}
 
-	pos_delta_x := position.xpos - last_pos.xpos
-	pos_delta_y := position.ypos - last_pos.ypos
+	abs_x_movement := 0 - f32(position.ypos - last_pos.ypos)
+	abs_y_movement := f32(position.xpos - last_pos.xpos)
+
+	rel_x_movement := abs_x_movement / f32(window.height)
+	rel_y_movement := abs_y_movement / f32(window.width)
 
 	rotate := Vec3{0, 0, 0}
-	rotate.y = f32(math.sign(pos_delta_x))
-	rotate.x = f32(-math.sign(pos_delta_y))
+	rotate.x = rel_x_movement
+	rotate.y = rel_y_movement
 
-	if l.dot(rotate, rotate) > math.F32_EPSILON {
-		fmt.println("pos_delta_x:", pos_delta_x)
-		fmt.println("pos_delta_y:", pos_delta_y)
-		camera_object.transform.rotation += look_speed * dt * normalize_vec(rotate)
+	if rotate.x != 0 || rotate.y != 0 {
+		viewer.transform.rotation += mouse_sensitivity * dt * rotate
+		viewer.transform.rotation.x = clamp(viewer.transform.rotation.x, -1.5, 1.5)
+		viewer.transform.rotation.y = math.mod(viewer.transform.rotation.y, math.TAU)
 	}
-
-	camera_object.transform.rotation.x = clamp(camera_object.transform.rotation.x, -1.5, 1.5)
-	camera_object.transform.rotation.y = math.mod(camera_object.transform.rotation.y, math.TAU)
 }

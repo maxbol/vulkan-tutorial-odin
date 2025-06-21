@@ -1,5 +1,6 @@
 package main
 
+import "core:fmt"
 import m "core:math"
 import l "core:math/linalg"
 import um "unitmath"
@@ -34,7 +35,7 @@ keys := Mappings {
 move_speed: f32 = 3
 look_speed: f32 = 1.5
 
-move_in_plane_xyz :: proc(window: glfw.WindowHandle, dt: f32, game_object: ^GameObject) {
+move_in_plane_xyz :: proc(window: glfw.WindowHandle, dt: f32, viewer: ^GameObject) {
 	using m, um
 
 	rotate := Vec3{0, 0, 0}
@@ -45,14 +46,15 @@ move_in_plane_xyz :: proc(window: glfw.WindowHandle, dt: f32, game_object: ^Game
 	if glfw.GetKey(window, keys.look_down) == glfw.PRESS {rotate.x -= 1}
 
 	if l.dot(rotate, rotate) > m.F32_EPSILON {
-		game_object.transform.rotation += look_speed * dt * normalize_vec(rotate)
+		viewer.transform.rotation += look_speed * dt * normalize_vec(rotate)
 	}
 
-	game_object.transform.rotation.x = clamp(game_object.transform.rotation.x, -1.5, 1.5)
-	game_object.transform.rotation.y = mod(game_object.transform.rotation.y, m.TAU)
+	viewer.transform.rotation.x = clamp(viewer.transform.rotation.x, -1.5, 1.5)
+	viewer.transform.rotation.y = mod(viewer.transform.rotation.y, m.TAU)
 
-	yaw := game_object.transform.rotation.y
-	forward_dir := Vec3{sin(yaw), 0, cos(yaw)}
+	pitch := viewer.transform.rotation.x
+	yaw := viewer.transform.rotation.y
+	forward_dir := Vec3{sin(yaw), -sin(pitch), cos(yaw)}
 	right_dir := Vec3{forward_dir.z, 0, -forward_dir.x}
 	up_dir := Vec3{0, -1, 0}
 
@@ -65,6 +67,6 @@ move_in_plane_xyz :: proc(window: glfw.WindowHandle, dt: f32, game_object: ^Game
 	if glfw.GetKey(window, keys.move_down) == glfw.PRESS {move_dir -= up_dir}
 
 	if l.dot(move_dir, move_dir) > F32_EPSILON {
-		game_object.transform.translation += move_speed * dt * normalize_vec(move_dir)
+		viewer.transform.translation += move_speed * dt * normalize_vec(move_dir)
 	}
 }

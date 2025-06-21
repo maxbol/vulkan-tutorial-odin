@@ -5,7 +5,7 @@ import "core:fmt"
 import "core:mem"
 import "vendor:vulkan"
 
-MAX_FRAMES_IN_FLIGHT :: 5
+MAX_FRAMES_IN_FLIGHT :: 10
 
 Swapchain :: struct {
 	inited:                     bool,
@@ -64,9 +64,10 @@ create_swapchain :: proc(
 	swapchain: ^Swapchain,
 ) -> CreateSwapchainError {
 	swapchain^ = {
-		inited = true,
-		device = device,
-		extent = window_extent,
+		inited        = true,
+		device        = device,
+		extent        = window_extent,
+		window_extent = window_extent,
 	}
 
 	swapchain_support := d.alloc_swapchain_support(device)

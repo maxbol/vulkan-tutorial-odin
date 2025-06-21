@@ -22,10 +22,7 @@ SimplePushConstantData :: struct {
 }
 
 create_simple_push_constant_data :: proc() -> SimplePushConstantData {
-	return SimplePushConstantData {
-		model_matrix = um.Mat4{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
-		normal_matrix = um.Mat4{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
-	}
+	return SimplePushConstantData{model_matrix = um.Mat4(1), normal_matrix = um.Mat4(1)}
 }
 
 @(private = "file")
@@ -72,8 +69,6 @@ create_pipeline :: proc(using srs: ^SimpleRenderSystem, render_pass: vulkan.Rend
 
 	pipeline_config.render_pass = render_pass
 	pipeline_config.pipeline_layout = pipeline_layout
-
-	fmt.println("pipeline_config", pipeline_config)
 
 	err := p.create_pipeline(
 		device,
@@ -143,6 +138,9 @@ srs_render_game_objects :: proc(using srs: ^SimpleRenderSystem, frame_info: ^Fra
 		push.model_matrix = transform_to_mat4(obj.transform)
 		push.normal_matrix = l.matrix4_from_matrix3(transform_to_normal_mat(obj.transform))
 
+		// model_matrix: matrix[3, 0, 0, 0; 0, 3, 0, 0; 0, -0, 3, 0; 0.5, 0.5, 0, 1]
+		// model_matrix: matrix[3, 0, 0, 0; 0, 3, 0, 0; 0, -0, 3, 0; 0, 0.5, 0, 1]
+
 		vulkan.CmdPushConstants(
 			frame_info.command_buffer,
 			pipeline_layout,
@@ -155,6 +153,4 @@ srs_render_game_objects :: proc(using srs: ^SimpleRenderSystem, frame_info: ^Fra
 		m.bind(obj.model.value, frame_info.command_buffer)
 		m.draw(obj.model.value, frame_info.command_buffer)
 	}
-
-
 }
