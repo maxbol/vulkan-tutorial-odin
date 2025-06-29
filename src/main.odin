@@ -1,5 +1,7 @@
 package main
 
+import gs "game_state"
+import "gui"
 import b "renderer/backends/vulkan/buffer"
 import c "renderer/backends/vulkan/camera"
 import ds "renderer/backends/vulkan/descriptors"
@@ -25,7 +27,7 @@ run_game :: proc(
 	window: ^w.Window,
 	renderer: ^r.Renderer,
 	global_pool: ^ds.DescriptorPool,
-	game_objects: ^GameObjectMap,
+	game_objects: ^gs.GameObjectMap,
 ) -> bool {
 	ubo_buffers := make([]b.Buffer, s.MAX_FRAMES_IN_FLIGHT)
 	defer delete(ubo_buffers)
@@ -99,14 +101,20 @@ run_game :: proc(
 
 	camera: c.Camera
 
-	viewer_object := create_game_object()
+	viewer_object := gs.create_game_object()
 	viewer_object.transform.translation.z = -2.5
+
+	game_gui: gui.GuiState
+	gui.init(&game_gui, renderer)
+	defer gui.destroy(&game_gui)
 
 	current_time := time.tick_now()
 	for !w.should_close(window) {
 		using math
 
 		glfw.PollEvents()
+
+		// gui.begin_frame(&game_gui)
 
 		new_time := time.tick_now()
 		frame_time := f32(time.tick_diff(current_time, new_time)) / 1_000_000_000
@@ -115,7 +123,16 @@ run_game :: proc(
 		mouse_lookaround(window, frame_time, &viewer_object)
 		move_in_plane_xyz(window.handle, frame_time, &viewer_object)
 
-		(&game_objects[0]).transform.translation.x += 0.1 * frame_time
+		// Object movement
+		(&game_objects[1]).transform.translation.x += 0.1 * frame_time
+
+		// Object rotation
+		gs.rotate(&(&game_objects[1]).transform, um.Vec3(0.5 * frame_time))
+
+		// Object scale
+		(&game_objects[0]).transform.scale.x += 0.5 * frame_time
+		(&game_objects[0]).transform.scale.y += 0.5 * frame_time
+		(&game_objects[0]).transform.scale.z += 0.5 * frame_time
 
 		c.camera_set_view_xyz(
 			&camera,
@@ -125,6 +142,8 @@ run_game :: proc(
 
 		aspect := r.get_aspect_ratio(renderer)
 		c.camera_set_perspective_projection(&camera, to_radians_f32(50), aspect, 0.1, 100)
+
+		// gui.draw(&game_gui)
 
 		ok, command_buffer := r.begin_frame(renderer)
 		if !ok {
@@ -138,7 +157,7 @@ run_game :: proc(
 
 		frame_index := r.get_frame_index(renderer)
 
-		frame_info := FrameInfo {
+		frame_info := gs.FrameInfo {
 			frame_index,
 			frame_time,
 			command_buffer,
@@ -159,8 +178,12 @@ run_game :: proc(
 		srs_render_game_objects(&simple_render_system, &frame_info)
 		pls_render(&point_light_system, &frame_info)
 
+		// gui.end_frame(&game_gui, &frame_info)
+
 		r.end_swapchain_render_pass(renderer, command_buffer)
 		r.end_frame(renderer)
+
+		free_all(context.temp_allocator)
 	}
 
 	vulkan.DeviceWaitIdle(device.vk_device)
@@ -219,7 +242,7 @@ main :: proc() {
 	}
 }
 
-unload_game_objects :: proc(game_objects: GameObjectMap) {
+unload_game_objects :: proc(game_objects: gs.GameObjectMap) {
 	for id, &obj in game_objects {
 		if obj.model.present {
 			m.destroy_model(&obj.model.value)
@@ -227,18 +250,18 @@ unload_game_objects :: proc(game_objects: GameObjectMap) {
 	}
 }
 
-load_game_objects :: proc(device: ^d.Device) -> (bool, GameObjectMap) {
+load_game_objects :: proc(device: ^d.Device) -> (bool, gs.GameObjectMap) {
 	using um
 
-	game_objects := make(GameObjectMap)
+	game_objects := make(gs.GameObjectMap)
 
 	model: m.Model
 
 
-	if !m.create_model_from_file(device, "models/flat_vase.obj", &model) {
+	if !m.create_simple_model_from_wavefront_file(device, "models/flat_vase.obj", &model) {
 		return false, nil
 	}
-	flat_vase := create_game_object()
+	flat_vase := gs.create_game_object()
 	flat_vase.model = {
 		value   = model,
 		present = true,
@@ -247,10 +270,10 @@ load_game_objects :: proc(device: ^d.Device) -> (bool, GameObjectMap) {
 	flat_vase.transform.scale = {3, 1.5, 3}
 	game_objects[flat_vase.id] = flat_vase
 
-	if !m.create_model_from_file(device, "models/smooth_vase.obj", &model) {
+	if !m.create_simple_model_from_wavefront_file(device, "models/smooth_vase.obj", &model) {
 		return false, nil
 	}
-	smooth_vase := create_game_object()
+	smooth_vase := gs.create_game_object()
 	smooth_vase.model = {
 		value   = model,
 		present = true,
@@ -259,10 +282,10 @@ load_game_objects :: proc(device: ^d.Device) -> (bool, GameObjectMap) {
 	smooth_vase.transform.scale = {3, 1.5, 3}
 	game_objects[smooth_vase.id] = smooth_vase
 
-	if !m.create_model_from_file(device, "models/quad.obj", &model) {
+	if !m.create_simple_model_from_wavefront_file(device, "models/quad.obj", &model) {
 		return false, nil
 	}
-	floor := create_game_object()
+	floor := gs.create_game_object()
 	floor.model = {
 		value   = model,
 		present = true,
@@ -281,7 +304,7 @@ load_game_objects :: proc(device: ^d.Device) -> (bool, GameObjectMap) {
 	}
 
 	for light_color, i in light_colors {
-		point_light := make_point_light(0.2)
+		point_light := gs.make_point_light(0.2)
 		point_light.color = light_colors[i]
 		rotate_light :=
 			um.Mat4(1) *
@@ -289,6 +312,8 @@ load_game_objects :: proc(device: ^d.Device) -> (bool, GameObjectMap) {
 		point_light.transform.translation = (rotate_light * Vec4{-1, -1, -1, 1}).xyz
 		game_objects[point_light.id] = point_light
 	}
+
+	m.load_model_glb("./assets/models/skeleton_mage.glb")
 
 	return true, game_objects
 }

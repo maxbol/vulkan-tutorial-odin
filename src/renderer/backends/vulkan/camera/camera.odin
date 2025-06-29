@@ -107,7 +107,6 @@ camera_set_view_xyz :: proc(using camera: ^Camera, position: um.Vec3, rotation: 
 	w := Vec3{(c2 * s1), (-s2), (c1 * c2)}
 
 	view_matrix = um.Mat4(1)
-
 	view_matrix[0][0] = u.x
 	view_matrix[1][0] = u.y
 	view_matrix[2][0] = u.z

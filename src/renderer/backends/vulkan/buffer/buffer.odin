@@ -6,14 +6,14 @@ import "core:mem"
 import "vendor:vulkan"
 
 Buffer :: struct {
-	device:                ^d.Device,
+	instance_count:        u32,
 	mapped:                rawptr,
+	device:                ^d.Device,
 	vk_allocator:          ^vulkan.AllocationCallbacks,
 	vk_buffer:             vulkan.Buffer,
 	memory:                vulkan.DeviceMemory,
 	buffer_size:           vulkan.DeviceSize,
 	instance_size:         vulkan.DeviceSize,
-	instance_count:        u32,
 	alignment_size:        vulkan.DeviceSize,
 	usage_flags:           vulkan.BufferUsageFlags,
 	memory_property_flags: vulkan.MemoryPropertyFlags,

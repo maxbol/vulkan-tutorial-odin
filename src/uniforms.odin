@@ -23,10 +23,10 @@ global_ubo :: proc(
 ) -> GlobalUbo {
 	using um
 	ubo := GlobalUbo {
-		projection        = Mat4{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, // Identity matrix
-		view              = Mat4{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, // Identity matrix
-		inverseView       = Mat4{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, // Identity matrix
-		ambientLightColor = Vec4{1, 1, 1, 0.02}, // Default ambient light color
+		projection        = Mat4(1), // Identity matrix
+		view              = Mat4(1), // Identity matrix
+		inverseView       = Mat4(1), // Identity matrix
+		ambientLightColor = um.vec4(1, 1, 1, 0.02), // Default ambient light color
 	}
 
 	assert(

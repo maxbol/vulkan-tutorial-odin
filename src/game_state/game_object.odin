@@ -1,9 +1,9 @@
-package main
+package game_state
 
-import m "../src/renderer/backends/vulkan/model/"
+import optional "../optional"
+import m "../renderer/backends/vulkan/model/"
+import um "../unitmath"
 import "core:math"
-import optional "optional"
-import um "unitmath"
 
 current_id: GameObjectId = 0
 

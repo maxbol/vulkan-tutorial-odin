@@ -393,6 +393,8 @@ create_vk_device :: proc(using device: ^Device) -> bool {
 	unique_queue_families[indices.present_family.value] = true
 
 	queue_create_infos := make([]vulkan.DeviceQueueCreateInfo, len(unique_queue_families))
+	defer delete(queue_create_infos)
+
 	i := 0
 	queue_priority: f32 = 1
 	for queue_family in unique_queue_families {

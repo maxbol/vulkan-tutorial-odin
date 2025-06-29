@@ -1,8 +1,8 @@
-package main
+package game_state
 
 import "vendor:vulkan"
 
-import c "renderer/backends/vulkan/camera"
+import c "../renderer/backends/vulkan/camera"
 
 FrameInfo :: struct {
 	frame_index:           int,

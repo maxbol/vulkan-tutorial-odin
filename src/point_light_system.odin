@@ -1,11 +1,13 @@
 package main
 
+import rbt "core:container/rbtree"
 import "core:fmt"
 import "core:math"
 import "core:math/linalg"
 import "core:slice"
 import "vendor:vulkan"
 
+import gs "game_state"
 import c "renderer/backends/vulkan/camera"
 import d "renderer/backends/vulkan/device"
 import p "renderer/backends/vulkan/pipeline"
@@ -31,7 +33,7 @@ PointLightPushConstants :: struct {
 
 PointLightSortedGameObject :: struct {
 	order: f32,
-	id:    GameObjectId,
+	id:    gs.GameObjectId,
 }
 
 pls_create :: proc(
@@ -127,7 +129,7 @@ create_pipeline :: proc(using pls: ^PointLightSystem, render_pass: vulkan.Render
 	return true
 }
 
-pls_update :: proc(frame_info: ^FrameInfo, ubo: ^GlobalUbo) {
+pls_update :: proc(frame_info: ^gs.FrameInfo, ubo: ^GlobalUbo) {
 	using um, linalg
 	rotate_light := Mat4(1) * matrix4_rotate_f32(0.5 * frame_info.frame_time, {0., -1., 0.})
 	light_index: int = 0
@@ -150,13 +152,16 @@ pls_update :: proc(frame_info: ^FrameInfo, ubo: ^GlobalUbo) {
 	ubo.numLights = light_index
 }
 
-pls_render :: proc(using pls: ^PointLightSystem, frame_info: ^FrameInfo) {
+pls_render :: proc(using pls: ^PointLightSystem, frame_info: ^gs.FrameInfo) {
 	using linalg
-	sorted: [dynamic]PointLightSortedGameObject = make(
+
+	sorted := make(
 		[dynamic]PointLightSortedGameObject,
 		0,
 		len(frame_info.game_objects),
+		context.temp_allocator,
 	)
+
 	for id, obj in frame_info.game_objects {
 		if obj.point_light.present == false {
 			continue

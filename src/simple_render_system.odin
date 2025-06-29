@@ -1,5 +1,6 @@
 package main
 
+import gs "game_state"
 import d "renderer/backends/vulkan/device"
 import m "renderer/backends/vulkan/model"
 import p "renderer/backends/vulkan/pipeline"
@@ -115,7 +116,7 @@ srs_destroy :: proc(using srs: ^SimpleRenderSystem) {
 	vulkan.DestroyPipelineLayout(device.vk_device, pipeline_layout, vk_allocator)
 }
 
-srs_render_game_objects :: proc(using srs: ^SimpleRenderSystem, frame_info: ^FrameInfo) {
+srs_render_game_objects :: proc(using srs: ^SimpleRenderSystem, frame_info: ^gs.FrameInfo) {
 	p.bind(&pipeline, frame_info.command_buffer)
 
 	vulkan.CmdBindDescriptorSets(
@@ -135,11 +136,8 @@ srs_render_game_objects :: proc(using srs: ^SimpleRenderSystem, frame_info: ^Fra
 		}
 		push := create_simple_push_constant_data()
 
-		push.model_matrix = transform_to_mat4(obj.transform)
-		push.normal_matrix = l.matrix4_from_matrix3(transform_to_normal_mat(obj.transform))
-
-		// model_matrix: matrix[3, 0, 0, 0; 0, 3, 0, 0; 0, -0, 3, 0; 0.5, 0.5, 0, 1]
-		// model_matrix: matrix[3, 0, 0, 0; 0, 3, 0, 0; 0, -0, 3, 0; 0, 0.5, 0, 1]
+		push.model_matrix = gs.transform_to_mat4(obj.transform)
+		push.normal_matrix = l.matrix4_from_matrix3(gs.transform_to_normal_mat(obj.transform))
 
 		vulkan.CmdPushConstants(
 			frame_info.command_buffer,
@@ -150,7 +148,7 @@ srs_render_game_objects :: proc(using srs: ^SimpleRenderSystem, frame_info: ^Fra
 			&push,
 		)
 
-		m.bind(obj.model.value, frame_info.command_buffer)
-		m.draw(obj.model.value, frame_info.command_buffer)
+		m.bind(obj.model.value.meshes[0], frame_info.command_buffer)
+		m.draw(obj.model.value.meshes[0], frame_info.command_buffer)
 	}
 }

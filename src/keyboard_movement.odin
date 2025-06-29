@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import m "core:math"
 import l "core:math/linalg"
+import gs "game_state"
 import um "unitmath"
 import "vendor:glfw"
 
@@ -35,7 +36,7 @@ keys := Mappings {
 move_speed: f32 = 3
 look_speed: f32 = 1.5
 
-move_in_plane_xyz :: proc(window: glfw.WindowHandle, dt: f32, viewer: ^GameObject) {
+move_in_plane_xyz :: proc(window: glfw.WindowHandle, dt: f32, viewer: ^gs.GameObject) {
 	using m, um
 
 	rotate := Vec3{0, 0, 0}

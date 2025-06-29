@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:math"
 import l "core:math/linalg"
+import gs "game_state"
 import w "renderer/backends/vulkan/window"
 import um "unitmath"
 import "vendor:glfw"
@@ -17,7 +18,7 @@ mouse_moved := false
 
 mouse_sensitivity: f32 = 3000
 
-mouse_lookaround :: proc(window: ^w.Window, dt: f32, viewer: ^GameObject) {
+mouse_lookaround :: proc(window: ^w.Window, dt: f32, viewer: ^gs.GameObject) {
 	using um
 	last_pos := position
 	xpos, ypos := glfw.GetCursorPos(window.handle)
